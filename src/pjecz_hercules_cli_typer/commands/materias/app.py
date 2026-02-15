@@ -38,7 +38,7 @@ def query(clave: str = "", limit: int = 10):
     if clave == "":
         console.print("[red]Clave inválida[/red]")
         return
-    materias = db.query(Materia).filter(Materia.clave.contains(clave)).order_by(Materia.clave)
+    materias = db.query(Materia).filter(Materia.clave.contains(clave)).order_by(Materia.clave).limit(limit)
     if materias.count() == 0:
         console.print(f"[yellow]No se encontró una materia con la clave {clave}[/yellow]")
     elif materias.count() == 1:
@@ -54,6 +54,6 @@ def query(clave: str = "", limit: int = 10):
         tabla.add_column("Clave", header_style="green", no_wrap=True)
         tabla.add_column("Nombre", header_style="green")
         tabla.add_column("Estatus", header_style="green")
-        for materia in materias:
+        for materia in materias.all():
             tabla.add_row(materia.clave, materia.nombre, materia.estatus)
         console.print(tabla)

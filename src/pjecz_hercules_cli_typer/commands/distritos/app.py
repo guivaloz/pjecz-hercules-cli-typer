@@ -39,7 +39,7 @@ def query(clave: str = "", limit: int = 10):
     if clave == "":
         console.print("[red]Clave inválida[/red]")
         return
-    distritos = db.query(Distrito).filter(Distrito.clave.contains(clave)).order_by(Distrito.clave)
+    distritos = db.query(Distrito).filter(Distrito.clave.contains(clave)).order_by(Distrito.clave).limit(limit)
     if distritos.count() == 0:
         console.print(f"[yellow]No se encontró un distrito con la clave {clave}[/yellow]")
     elif distritos.count() == 1:
@@ -57,6 +57,6 @@ def query(clave: str = "", limit: int = 10):
         tabla.add_column("Nombre", header_style="green")
         tabla.add_column("Nombre corto", header_style="green")
         tabla.add_column("Estatus", header_style="green")
-        for distrito in db.query(Distrito).limit(limit).all():
+        for distrito in db.query(Distrito).all():
             tabla.add_row(distrito.clave, distrito.nombre, distrito.nombre_corto, distrito.estatus)
         console.print(tabla)

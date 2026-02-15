@@ -39,7 +39,7 @@ def query(clave: str = "", limit: int = 10):
     if clave == "":
         console.print("[red]Clave inválida[/red]")
         return
-    autoridades = db.query(Autoridad).filter(Autoridad.clave.contains(clave)).order_by(Autoridad.clave)
+    autoridades = db.query(Autoridad).filter(Autoridad.clave.contains(clave)).order_by(Autoridad.clave).limit(limit)
     if autoridades.count() == 0:
         console.print(f"[yellow]No se encontró una autoridad con la clave {clave}[/yellow]")
     elif autoridades.count() == 1:
@@ -61,6 +61,6 @@ def query(clave: str = "", limit: int = 10):
         tabla.add_column("Descripción", header_style="green")
         tabla.add_column("Descripción corta", header_style="green")
         tabla.add_column("Estatus", header_style="green")
-        for autoridad in autoridades:
+        for autoridad in autoridades.all():
             tabla.add_row(autoridad.clave, autoridad.descripcion, autoridad.descripcion_corta, autoridad.estatus)
         console.print(tabla)

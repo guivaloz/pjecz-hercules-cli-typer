@@ -8,11 +8,13 @@ from typer import Typer
 
 from .commands.autoridades.app import app as autoridades_app
 from .commands.distritos.app import app as distritos_app
+from .commands.edictos.app import app as edictos_app
 from .commands.materias.app import app as materias_app
 
 app = Typer()
 app.add_typer(autoridades_app, name="autoridades")
 app.add_typer(distritos_app, name="distritos")
+app.add_typer(edictos_app, name="edictos")
 app.add_typer(materias_app, name="materias")
 
 if __name__ == "__main__":
