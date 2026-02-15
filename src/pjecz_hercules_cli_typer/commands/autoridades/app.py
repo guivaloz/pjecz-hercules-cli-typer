@@ -14,7 +14,7 @@ app = Typer(help="Autoridades")
 
 
 @app.command()
-def query(clave: str = "", limit: int = 10):
+def query(clave: str = "", offset: int = 0, limit: int = 10):
     """Consultar autoridades"""
     console = Console()
     console.print("Consultando autoridades...")
@@ -29,7 +29,7 @@ def query(clave: str = "", limit: int = 10):
         tabla.add_column("Descripción", header_style="green")
         tabla.add_column("Descripción corta", header_style="green")
         tabla.add_column("Estatus", header_style="green")
-        for autoridad in db.query(Autoridad).order_by(Autoridad.clave).limit(limit).all():
+        for autoridad in db.query(Autoridad).order_by(Autoridad.clave).offset(offset).limit(limit).all():
             tabla.add_row(autoridad.clave, autoridad.descripcion, autoridad.descripcion_corta, autoridad.estatus)
         console.print(tabla)
         return
@@ -39,7 +39,7 @@ def query(clave: str = "", limit: int = 10):
     if clave == "":
         console.print("[red]Clave inválida[/red]")
         return
-    autoridades = db.query(Autoridad).filter(Autoridad.clave.contains(clave)).order_by(Autoridad.clave).limit(limit)
+    autoridades = db.query(Autoridad).filter(Autoridad.clave.contains(clave)).order_by(Autoridad.clave).offset(offset).limit(limit)
     if autoridades.count() == 0:
         console.print(f"[yellow]No se encontró una autoridad con la clave {clave}[/yellow]")
     elif autoridades.count() == 1:

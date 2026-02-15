@@ -15,7 +15,7 @@ app = Typer(help="Edictos")
 
 
 @app.command()
-def query(edicto_id: int = 0, autoridad_clave: str = "", limit: int = 10):
+def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit: int = 10):
     """Consultar edictos"""
     console = Console()
     console.print("Consultando edictos...")
@@ -42,7 +42,7 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", limit: int = 10):
         if autoridad_clave == "":
             console.print("[red]Clave inválida[/red]")
             return
-        edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).limit(limit)
+        edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).offset(offset).limit(limit)
         if edictos.count() == 0:
             console.print(f"[yellow]No se encontraron edictos para la autoridad {autoridad_clave}[/yellow]")
         else:
@@ -58,7 +58,7 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", limit: int = 10):
         return
 
     # Consultar los edictos más recientes
-    edictos = db.query(Edicto).order_by(Edicto.id.desc()).limit(limit)
+    edictos = db.query(Edicto).order_by(Edicto.id.desc()).offset(offset).limit(limit)
     if edictos.count() == 0:
         console.print("[yellow]No se encontraron edictos[/yellow]")
     else:

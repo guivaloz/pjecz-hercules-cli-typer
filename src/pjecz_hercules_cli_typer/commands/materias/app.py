@@ -14,7 +14,7 @@ app = Typer(help="Materias")
 
 
 @app.command()
-def query(clave: str = "", limit: int = 10):
+def query(clave: str = "", offset: int = 0, limit: int = 10):
     """Consultar materias"""
     console = Console()
     console.print("Consultando materias...")
@@ -28,7 +28,7 @@ def query(clave: str = "", limit: int = 10):
         tabla.add_column("Clave", header_style="green", no_wrap=True)
         tabla.add_column("Nombre", header_style="green")
         tabla.add_column("Estatus", header_style="green")
-        for materia in db.query(Materia).order_by(Materia.clave).limit(limit).all():
+        for materia in db.query(Materia).order_by(Materia.clave).offset(offset).limit(limit).all():
             tabla.add_row(materia.clave, materia.nombre, materia.estatus)
         console.print(tabla)
         return
@@ -38,7 +38,7 @@ def query(clave: str = "", limit: int = 10):
     if clave == "":
         console.print("[red]Clave inválida[/red]")
         return
-    materias = db.query(Materia).filter(Materia.clave.contains(clave)).order_by(Materia.clave).limit(limit)
+    materias = db.query(Materia).filter(Materia.clave.contains(clave)).order_by(Materia.clave).offset(offset).limit(limit)
     if materias.count() == 0:
         console.print(f"[yellow]No se encontró una materia con la clave {clave}[/yellow]")
     elif materias.count() == 1:

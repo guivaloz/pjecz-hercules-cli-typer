@@ -28,6 +28,12 @@ Consultar las autoridades que sean Tribunales Laborales
 cli autoridades query --clave tl
 ```
 
+Consultar las autoridades que sean Notarías de Torreón, con offset 40 y limit 40
+
+```bash
+cli autoridades query --clave trc-n --offset 40 --limit 40
+```
+
 Consultar los 40 edictos más recientes
 
 ```bash
