@@ -2,14 +2,16 @@
 Edictos command
 """
 
-from typer import Typer
+from typing import Annotated
+
+from typer import Exit, Option, Typer
 from rich.console import Console
 from rich.table import Table
 
 from ...models.autoridades import Autoridad
 from ...models.edictos import Edicto
 from ...utils.database import get_database
-from ...utils.safe_string import safe_clave
+from ...utils.safe_string import safe_clave, safe_string
 
 app = Typer(help="Edictos")
 
@@ -41,10 +43,11 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
         autoridad_clave = safe_clave(autoridad_clave)
         if autoridad_clave == "":
             console.print("[red]Clave inválida[/red]")
-            return
+            raise Exit(code=1)
         edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).offset(offset).limit(limit)
         if edictos.count() == 0:
             console.print(f"[yellow]No se encontraron edictos para la autoridad {autoridad_clave}[/yellow]")
+            raise Exit(code=1)
         else:
             tabla = Table(title=f"Edictos de la autoridad {autoridad_clave}")
             tabla.add_column("ID", header_style="green", no_wrap=True)
@@ -71,3 +74,66 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
         for edicto in edictos.all():
             tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.expediente, edicto.descripcion, edicto.estatus)
         console.print(tabla)
+
+
+@app.command()
+def update(
+    autoridad_clave: str = "",
+    offset: int = 0,
+    limit: int = 10,
+    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+):
+    """Actualizar los edictos"""
+    console = Console()
+    console.print("Actualizando edictos...")
+
+    # Consultar
+    db = get_database()
+
+    # Si se especificó una clave de autoridad
+    if autoridad_clave:
+        # Consultar los edictos de esa autoridad
+        autoridad_clave = safe_clave(autoridad_clave)
+        if autoridad_clave == "":
+            console.print("[red]Clave inválida[/red]")
+            raise Exit(code=1)
+        edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).offset(offset).limit(limit)
+        if edictos.count() == 0:
+            console.print(f"[yellow]No se encontraron edictos para la autoridad {autoridad_clave}[/yellow]")
+            raise Exit(code=1)
+        total = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).count()
+        title = f"Hay {total} edictos en la autoridad {autoridad_clave}"
+    else:
+        # Consultar los edictos más recientes
+        edictos = db.query(Edicto).order_by(Edicto.id.desc()).offset(offset).limit(limit)
+        if edictos.count() == 0:
+            console.print("[yellow]No se encontraron edictos[/yellow]")
+            raise Exit(code=1)
+        total = db.query(Edicto).count()
+        title = f"Hay {total} edictos en total"
+
+    # Mostrar tabla
+    tabla = Table(title=title)
+    tabla.add_column("ID", header_style="green", no_wrap=True)
+    tabla.add_column("Autoridad", header_style="green")
+    tabla.add_column("Archivo anterior", header_style="green")
+    tabla.add_column("Archivo nuevo", header_style="green")
+    tabla.add_column("Estatus", header_style="green")
+    for edicto in edictos.all():
+        hay_cambios = False
+        # Cambiar el nombre del archivo
+        if edicto.archivo != safe_string(edicto.archivo, to_uppercase=False):
+            archivo_anterior = edicto.archivo
+            edicto.archivo = safe_string(edicto.archivo, to_uppercase=False)
+            hay_cambios = True
+        # Agregar renglon si hay cambios
+        if hay_cambios:
+            tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style="green")
+        else:
+            tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.archivo, edicto.archivo, edicto.estatus, style="blue")
+        # Si se especificó guardar, guardar los cambios en la base de datos
+        if save and hay_cambios:
+            db.add(edicto)
+    if save:
+        db.commit()
+    console.print(tabla)

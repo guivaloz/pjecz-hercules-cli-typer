@@ -45,3 +45,15 @@ Consultar los 40 edictos más recientes de la Notaría 66
 ```bash
 cli edictos query --autoridad-clave slt-n066 --limit 40
 ```
+
+Mostrar 20 edictos que se pueden actualizar de la autoridad TRC-N027, con offset 40, sin guardar los cambios
+
+```bash
+cli edictos update --autoridad-clave trc-n027 --limit 20 --offset 40
+```
+
+Actualizar 20 edictos de la autoridad TRC-N027, con offset 40 y guardar los cambios
+
+```bash
+cli edictos update --autoridad-clave trc-n027 --limit 20 --offset 40 --save
+```

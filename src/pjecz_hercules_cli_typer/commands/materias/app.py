@@ -2,7 +2,7 @@
 Materias command
 """
 
-from typer import Typer
+from typer import Exit, Typer
 from rich.console import Console
 from rich.table import Table
 
@@ -37,10 +37,11 @@ def query(clave: str = "", offset: int = 0, limit: int = 10):
     clave = safe_clave(clave)
     if clave == "":
         console.print("[red]Clave inválida[/red]")
-        return
+        raise Exit(code=1)
     materias = db.query(Materia).filter(Materia.clave.contains(clave)).order_by(Materia.clave).offset(offset).limit(limit)
     if materias.count() == 0:
         console.print(f"[yellow]No se encontró una materia con la clave {clave}[/yellow]")
+        raise Exit(code=1)
     elif materias.count() == 1:
         # Mostrar los detalles de una materia
         materia = materias.first()
