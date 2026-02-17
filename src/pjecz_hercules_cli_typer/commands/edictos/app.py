@@ -13,7 +13,7 @@ from ...config.settings import get_settings
 from ...models.autoridades import Autoridad
 from ...models.edictos import Edicto
 from ...utils.database import get_database
-from ...utils.google_cloud_storage import public_blob_name
+from ...utils.google_cloud_storage import get_blob_name_from_url, public_blob_name, update_blob_name_in_gcs
 from ...utils.safe_string import safe_clave, safe_string
 
 app = Typer(help="Edictos")
@@ -133,22 +133,26 @@ def update(
     tabla.add_column("Estatus", header_style="green")
     for edicto in edictos.all():
         hay_cambios = False
+        # Definir la fecha del edicto en YYYY-MM-DD
+        fecha = edicto.creado.date()
+        descripcion = safe_string(edicto.descripcion, separator="-")
+        hashed_id = str(hashids.encode(edicto.id))
+        archivo_correcto = f"{fecha.isoformat()}-{descripcion}-{hashed_id}.pdf"
         # Cambiar el nombre del archivo
         archivo_anterior = edicto.archivo
-        archivo_correcto = safe_string(edicto.archivo, to_uppercase=False, separator="-")
         if archivo_anterior != archivo_correcto:
             edicto.archivo = archivo_correcto
             hay_cambios = True
         # Cambiar el URL del archivo
         url_anterior = edicto.url
         url_correcta = public_blob_name(
-            bucket=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+            bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
             base="",
             distrito_clave=edicto.autoridad.distrito.clave,
             autoridad_clave=edicto.autoridad.clave,
-            fecha=edicto.creado.date(),
-            descripcion=safe_string(edicto.descripcion),
-            hashed_id=str(hashids.encode(edicto.id)),
+            fecha=fecha,
+            descripcion=descripcion,
+            hashed_id=hashed_id,
             extension="pdf",
         )
         if url_anterior != url_correcta:
@@ -162,6 +166,15 @@ def update(
         tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.archivo, edicto.url, edicto.estatus, style=style)
         # Si se especificó guardar, guardar los cambios en la base de datos
         if save and hay_cambios:
+            try:
+                update_blob_name_in_gcs(
+                    bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                    old_blob_name=get_blob_name_from_url(url_anterior),
+                    new_blob_name=get_blob_name_from_url(url_correcta),
+                )
+            except Exception as e:
+                console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
+                continue
             db.add(edicto)
     if save:
         db.commit()

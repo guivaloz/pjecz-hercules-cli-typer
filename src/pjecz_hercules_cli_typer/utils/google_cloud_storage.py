@@ -33,6 +33,12 @@ class BucketNotFoundError(Exception):
     pass
 
 
+class CopyBlobError(Exception):
+    """Custom exception for copy blob error"""
+
+    pass
+
+
 class FileNotAllowedError(Exception):
     """Custom exception for file not allowed"""
 
@@ -78,7 +84,7 @@ def get_media_type_from_filename(filename: str) -> str:
     return media_type
 
 
-def private_blob_name(bucket: str, base: str, fecha: date, filename: str, extension: str) -> str:
+def private_blob_name(bucket_name: str, base: str, fecha: date, filename: str, extension: str) -> str:
     """
     Get blob name from filename
 
@@ -103,11 +109,11 @@ def private_blob_name(bucket: str, base: str, fecha: date, filename: str, extens
         path_str = f"{base}/{path_str}"
 
     # Return base, year, month, day and filename separated by slashes
-    return f"{GOOGLE_STORAGE_HOST}/{bucket}/{path_str}"
+    return f"{GOOGLE_STORAGE_HOST}/{bucket_name}/{path_str}"
 
 
 def public_blob_name(
-    bucket: str,
+    bucket_name: str,
     base: str,
     distrito_clave: str,
     autoridad_clave: str,
@@ -148,7 +154,7 @@ def public_blob_name(
         path_str = f"{base}/{path_str}"
 
     # Return base, year, month, day and filename separated by slashes
-    return f"{GOOGLE_STORAGE_HOST}/{bucket}/{path_str}"
+    return f"{GOOGLE_STORAGE_HOST}/{bucket_name}/{path_str}"
 
 
 
@@ -280,3 +286,49 @@ def upload_file_to_gcs(bucket_name: str, blob_name: str, content_type: str, data
 
     # Return public URL
     return blob.public_url
+
+
+def update_blob_name_in_gcs(bucket_name: str, old_blob_name: str, new_blob_name: str) -> str:
+    """
+    Update (rename/move) a blob in Google Cloud Storage
+
+    This function copies the blob to a new location and deletes the old one,
+    which is the standard approach for renaming in GCS.
+
+    :param bucket_name: Name of the bucket
+    :param old_blob_name: Current path/name of the file
+    :param new_blob_name: New path/name for the file
+    :return: Public URL of the new blob
+    """
+
+    # Get bucket
+    storage_client = storage.Client()
+    try:
+        bucket = storage_client.get_bucket(bucket_name)
+    except NotFound as error:
+        raise BucketNotFoundError("Bucket no encontrado") from error
+
+    # Get the old blob
+    old_blob = bucket.get_blob(old_blob_name)
+    if old_blob is None:
+        raise FileNotFoundError(f"Archivo no encontrado: {old_blob_name}")
+
+    # Copy to new blob name
+    try:
+        new_blob = bucket.copy_blob(old_blob, bucket, new_blob_name)
+    except Exception as error:
+        raise CopyBlobError(f"Error al copiar el archivo a {new_blob_name}") from error
+
+    # Delete the old blob
+    try:
+        old_blob.delete()
+    except Exception as error:
+        # If deletion fails, we should clean up the new blob
+        try:
+            new_blob.delete()
+        except Exception:
+            pass
+        raise CopyBlobError(f"Error al eliminar el archivo antiguo: {old_blob_name}") from error
+
+    # Return public URL of the new blob
+    return new_blob.public_url
