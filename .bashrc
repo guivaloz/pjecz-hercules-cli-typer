@@ -1,4 +1,4 @@
-# pjecz-hercules-flask
+# pjecz-hercules-cli-typer
 
 if [ -f ~/.bashrc ]
 then
@@ -26,12 +26,18 @@ then
     echo "-- Variables de entorno"
     # export $(grep -v '^#' .env | xargs)
     source .env && export $(sed '/^#/d' .env | cut -d= -f1)
+    echo "   CLOUD_STORAGE_DEPOSITO_EDICTOS: ${CLOUD_STORAGE_DEPOSITO_EDICTOS}"
+    echo "   CLOUD_STORAGE_DEPOSITO_GLOSAS: ${CLOUD_STORAGE_DEPOSITO_GLOSAS}"
+    echo "   CLOUD_STORAGE_DEPOSITO_LISTAS_DE_ACUERDOS: ${CLOUD_STORAGE_DEPOSITO_LISTAS_DE_ACUERDOS}"
+    echo "   CLOUD_STORAGE_DEPOSITO_OFICIOS: ${CLOUD_STORAGE_DEPOSITO_OFICIOS}"
+    echo "   CLOUD_STORAGE_DEPOSITO_SENTENCIAS: ${CLOUD_STORAGE_DEPOSITO_SENTENCIAS}"
     echo "   DB_HOST: ${DB_HOST}"
     echo "   DB_PORT: ${DB_PORT}"
     echo "   DB_NAME: ${DB_NAME}"
     echo "   DB_USER: ${DB_USER}"
     echo "   DB_PASS: ${DB_PASS}"
     echo "   GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}"
+    echo "   SALT: ${SALT}"
     echo "   SQLALCHEMY_DATABASE_URI: ${SQLALCHEMY_DATABASE_URI}"
     echo
     export PGHOST=$DB_HOST

@@ -4,13 +4,16 @@ Edictos command
 
 from typing import Annotated
 
+from hashids import Hashids
 from typer import Exit, Option, Typer
 from rich.console import Console
 from rich.table import Table
 
+from ...config.settings import get_settings
 from ...models.autoridades import Autoridad
 from ...models.edictos import Edicto
 from ...utils.database import get_database
+from ...utils.google_cloud_storage import public_blob_name
 from ...utils.safe_string import safe_clave, safe_string
 
 app = Typer(help="Edictos")
@@ -87,6 +90,15 @@ def update(
     console = Console()
     console.print("Actualizando edictos...")
 
+    # Obtener configuración
+    settings = get_settings()
+    hashids = Hashids(salt=settings.SALT, min_length=8)
+
+    # Validar que se haya configurado el depósito de edictos
+    if settings.CLOUD_STORAGE_DEPOSITO_EDICTOS == "":
+        console.print("[red]No se ha configurado el depósito de edictos[/red]")
+        raise Exit(code=1)
+
     # Consultar
     db = get_database()
 
@@ -116,21 +128,38 @@ def update(
     tabla = Table(title=title)
     tabla.add_column("ID", header_style="green", no_wrap=True)
     tabla.add_column("Autoridad", header_style="green")
-    tabla.add_column("Archivo anterior", header_style="green")
-    tabla.add_column("Archivo nuevo", header_style="green")
+    tabla.add_column("Archivo", header_style="green")
+    tabla.add_column("URL", header_style="green")
     tabla.add_column("Estatus", header_style="green")
     for edicto in edictos.all():
         hay_cambios = False
         # Cambiar el nombre del archivo
-        if edicto.archivo != safe_string(edicto.archivo, to_uppercase=False):
-            archivo_anterior = edicto.archivo
-            edicto.archivo = safe_string(edicto.archivo, to_uppercase=False)
+        archivo_anterior = edicto.archivo
+        archivo_correcto = safe_string(edicto.archivo, to_uppercase=False, separator="-")
+        if archivo_anterior != archivo_correcto:
+            edicto.archivo = archivo_correcto
+            hay_cambios = True
+        # Cambiar el URL del archivo
+        url_anterior = edicto.url
+        url_correcta = public_blob_name(
+            bucket=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+            base="",
+            distrito_clave=edicto.autoridad.distrito.clave,
+            autoridad_clave=edicto.autoridad.clave,
+            fecha=edicto.creado.date(),
+            descripcion=safe_string(edicto.descripcion),
+            hashed_id=str(hashids.encode(edicto.id)),
+            extension="pdf",
+        )
+        if url_anterior != url_correcta:
+            edicto.url = url_correcta
             hay_cambios = True
         # Agregar renglon si hay cambios
+        style="blue"
         if hay_cambios:
-            tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style="green")
-        else:
-            tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.archivo, edicto.archivo, edicto.estatus, style="blue")
+            style="green"
+        # tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, url_anterior, edicto.url, edicto.estatus, style=style)
+        tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.archivo, edicto.url, edicto.estatus, style=style)
         # Si se especificó guardar, guardar los cambios en la base de datos
         if save and hay_cambios:
             db.add(edicto)
