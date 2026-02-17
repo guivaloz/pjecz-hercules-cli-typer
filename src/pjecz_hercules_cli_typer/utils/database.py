@@ -1,5 +1,5 @@
 """
-Database
+Database utilities
 """
 
 from datetime import datetime
