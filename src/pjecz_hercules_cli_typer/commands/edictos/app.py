@@ -13,7 +13,7 @@ from ...config.settings import get_settings
 from ...models.autoridades import Autoridad
 from ...models.edictos import Edicto
 from ...utils.database import get_database
-from ...utils.google_cloud_storage import get_blob_name_from_url, public_blob_name, update_blob_name_in_gcs
+from ...utils.google_cloud_storage import check_file_exists_from_gcs, get_blob_name_from_url, public_blob_name, update_blob_name_in_gcs
 from ...utils.safe_string import safe_clave, safe_string
 
 app = Typer(help="Edictos")
@@ -166,15 +166,27 @@ def update(
         tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.archivo, edicto.url, edicto.estatus, style=style)
         # Si se especificó guardar, guardar los cambios en la base de datos
         if save and hay_cambios:
+            se_va_a_ejecutar_update_blob_name_in_gcs = True
+            # Primero revisar si ya existe con el URL correcto
             try:
-                update_blob_name_in_gcs(
+                if check_file_exists_from_gcs(
                     bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                    old_blob_name=get_blob_name_from_url(url_anterior),
-                    new_blob_name=get_blob_name_from_url(url_correcta),
-                )
+                    blob_name=get_blob_name_from_url(url_correcta),
+                ):
+                    se_va_a_ejecutar_update_blob_name_in_gcs = False
             except Exception as e:
-                console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
+                console.print(f"[red]Error al verificar si el archivo existe en Google Cloud Storage: {e}[/red]")
                 continue
+            if se_va_a_ejecutar_update_blob_name_in_gcs:
+                try:
+                    update_blob_name_in_gcs(
+                        bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                        old_blob_name=get_blob_name_from_url(url_anterior),
+                        new_blob_name=get_blob_name_from_url(url_correcta),
+                    )
+                except Exception as e:
+                    console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
+                    continue
             db.add(edicto)
     if save:
         db.commit()
