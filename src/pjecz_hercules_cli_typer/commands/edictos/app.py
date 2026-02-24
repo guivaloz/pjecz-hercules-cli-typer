@@ -84,11 +84,16 @@ def update(
     autoridad_clave: str = "",
     offset: int = 0,
     limit: int = 10,
+    all: Annotated[bool, Option("--all", "-a", help="Todos los registros")] = False,
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
     """Actualizar los edictos"""
     console = Console()
     console.print("Actualizando edictos...")
+
+    # Inicializar contadores
+    total_actualizados = 0
+    total_sin_cambios = 0
 
     # Obtener configuración
     settings = get_settings()
@@ -124,73 +129,91 @@ def update(
         total = db.query(Edicto).count()
         title = f"Hay {total} edictos en total"
 
-    # Mostrar tabla
-    tabla = Table(title=title)
-    tabla.add_column("ID", header_style="green", no_wrap=True)
-    tabla.add_column("Autoridad", header_style="green")
-    tabla.add_column("Archivo anterior", header_style="green")
-    tabla.add_column("Archivo nuevo", header_style="green")
-    tabla.add_column("Estatus", header_style="green")
-    # Inicializar listado con los edictos que se pueden actualizar
-    edictos_que_se_pueden_actualizar = []
-    # Primer bucle para validar
-    for edicto in edictos.all():
-        hay_cambios = False
-        # Definir el nombre del archivo como YYYY-MM-DD-DESCRIPCION-HASHID.pdf
-        fecha = edicto.creado.date()
-        descripcion = safe_string(edicto.descripcion, max_len=200, separator="-")
-        hashed_id = str(hashids.encode(edicto.id))
-        archivo_correcto = f"{fecha.isoformat()}-{descripcion}-{hashed_id}.pdf"
-        # Cambiar el nombre del archivo
-        archivo_anterior = edicto.archivo
-        if archivo_anterior != archivo_correcto:
-            edicto.archivo = archivo_correcto
-            hay_cambios = True
-        # Cambiar el URL del archivo
-        url_anterior = edicto.url
-        url_correcta = public_blob_name(
-            bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-            base="",
-            distrito_clave=edicto.autoridad.distrito.clave,
-            autoridad_clave=edicto.autoridad.clave,
-            fecha=fecha,
-            descripcion=descripcion,
-            hashed_id=hashed_id,
-            extension="pdf",
-        )
-        if url_anterior != url_correcta:
-            edicto.url = url_correcta
-            hay_cambios = True
-        # Por defecto el renglon es azul
-        style="blue"
-        # Si hay cambios
-        if hay_cambios:
-            try:
-                if check_file_exists_from_gcs(
-                    bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                    blob_name=get_blob_name_from_url(url_correcta),
-                ):
-                    edictos_que_se_pueden_actualizar.append(edicto)
-            except Exception as e:
-                console.print(f"[red]Error al verificar si el archivo existe en Google Cloud Storage: {e}[/red]")
-                continue
-            style="green"
-        # Agregar renglon a la tabla
-        tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style=style)
-    # Segundo bucle para actualizar y mover
-    if save:
-        for edicto in edictos_que_se_pueden_actualizar:
-            try:
-                update_blob_name_in_gcs(
-                    bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                    old_blob_name=get_blob_name_from_url(url_anterior),
-                    new_blob_name=get_blob_name_from_url(url_correcta),
-                )
-            except Exception as e:
-                console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
-                continue
-            db.add(edicto)
-        # Guardar los cambios en la base de datos
-        db.commit()
-    # Mostrar la tabla
-    console.print(tabla)
+    # Bucle para incrementar el offset hasta que no haya más edictos
+    while edictos.count() > 0:
+        # Mostrar tabla
+        tabla = Table(title=title)
+        tabla.add_column("ID", header_style="green", no_wrap=True)
+        tabla.add_column("Autoridad", header_style="green")
+        tabla.add_column("Archivo anterior", header_style="green")
+        tabla.add_column("Archivo nuevo", header_style="green")
+        tabla.add_column("Estatus", header_style="green")
+        # Inicializar listado con los edictos que se pueden actualizar
+        edictos_que_se_pueden_actualizar = []
+        # Primer bucle para validar
+        for edicto in edictos.all():
+            hay_cambios = False
+            # Definir el nombre del archivo como YYYY-MM-DD-DESCRIPCION-HASHID.pdf
+            fecha = edicto.creado.date()
+            descripcion = safe_string(edicto.descripcion, max_len=200, separator="-")
+            hashed_id = str(hashids.encode(edicto.id))
+            archivo_correcto = f"{fecha.isoformat()}-{descripcion}-{hashed_id}.pdf"
+            # Cambiar el nombre del archivo
+            archivo_anterior = edicto.archivo
+            if archivo_anterior != archivo_correcto:
+                edicto.archivo = archivo_correcto
+                hay_cambios = True
+            # Cambiar el URL del archivo
+            url_anterior = edicto.url
+            url_correcta = public_blob_name(
+                bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                base="",
+                distrito_clave=edicto.autoridad.distrito.clave,
+                autoridad_clave=edicto.autoridad.clave,
+                fecha=fecha,
+                descripcion=descripcion,
+                hashed_id=hashed_id,
+                extension="pdf",
+            )
+            if url_anterior != url_correcta:
+                edicto.url = url_correcta
+                hay_cambios = True
+            # Por defecto el renglon es azul
+            style="blue"
+            # Si hay cambios
+            if hay_cambios:
+                try:
+                    if check_file_exists_from_gcs(
+                        bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                        blob_name=get_blob_name_from_url(url_correcta),
+                    ):
+                        edictos_que_se_pueden_actualizar.append(edicto)
+                except Exception as e:
+                    console.print(f"[red]Error al verificar si el archivo existe en Google Cloud Storage: {e}[/red]")
+                    continue
+                style="green"
+            # Agregar renglon a la tabla
+            tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style=style)
+        # Segundo bucle para actualizar y mover
+        if save:
+            for edicto in edictos_que_se_pueden_actualizar:
+                try:
+                    update_blob_name_in_gcs(
+                        bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                        old_blob_name=get_blob_name_from_url(url_anterior),
+                        new_blob_name=get_blob_name_from_url(url_correcta),
+                    )
+                except Exception as e:
+                    console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
+                    continue
+                db.add(edicto)
+                total_actualizados += 1
+            total_sin_cambios = len(edictos_que_se_pueden_actualizar) - total_actualizados
+            # Guardar los cambios en la base de datos
+            db.commit()
+        # Mostrar la tabla
+        console.print(tabla)
+        # Si no se especificó la opción --all, salir del ciclo
+        if not all:
+            break
+        # Incrementar el offset
+        offset += limit
+        # Consultar los siguientes edictos
+        if autoridad_clave:
+            edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).offset(offset).limit(limit)
+        else:
+            edictos = db.query(Edicto).order_by(Edicto.id.desc()).offset(offset).limit(limit)
+
+    # Mostrar los contadores
+    console.print(f"[green]Total actualizados: {total_actualizados}[/green]")
+    console.print(f"[blue]Total sin cambios: {total_sin_cambios}[/blue]")
