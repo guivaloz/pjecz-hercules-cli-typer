@@ -132,7 +132,7 @@ def update(
     # Bucle para incrementar el offset hasta que no haya más edictos
     while edictos.count() > 0:
         # Mostrar tabla
-        tabla = Table(title=title)
+        tabla = Table(title=f"{title}; mostrando del {offset + 1} al {offset + limit}")
         tabla.add_column("ID", header_style="green", no_wrap=True)
         tabla.add_column("Autoridad", header_style="green")
         tabla.add_column("Archivo anterior", header_style="green")
