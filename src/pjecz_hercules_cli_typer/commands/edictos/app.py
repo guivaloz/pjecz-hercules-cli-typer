@@ -131,6 +131,9 @@ def update(
     tabla.add_column("Archivo anterior", header_style="green")
     tabla.add_column("Archivo nuevo", header_style="green")
     tabla.add_column("Estatus", header_style="green")
+    # Inicializar listado con los edictos que se pueden actualizar
+    edictos_que_se_pueden_actualizar = []
+    # Primer bucle para validar
     for edicto in edictos.all():
         hay_cambios = False
         # Definir el nombre del archivo como YYYY-MM-DD-DESCRIPCION-HASHID.pdf
@@ -158,35 +161,36 @@ def update(
         if url_anterior != url_correcta:
             edicto.url = url_correcta
             hay_cambios = True
-        # Agregar renglon si hay cambios
+        # Por defecto el renglon es azul
         style="blue"
+        # Si hay cambios
         if hay_cambios:
-            style="green"
-        tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style=style)
-        # Si se especificó guardar, guardar los cambios en la base de datos
-        if save and hay_cambios:
-            se_va_a_ejecutar_update_blob_name_in_gcs = True
-            # Primero revisar si ya existe con el URL correcto
             try:
                 if check_file_exists_from_gcs(
                     bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
                     blob_name=get_blob_name_from_url(url_correcta),
                 ):
-                    se_va_a_ejecutar_update_blob_name_in_gcs = False
+                    edictos_que_se_pueden_actualizar.append(edicto)
             except Exception as e:
                 console.print(f"[red]Error al verificar si el archivo existe en Google Cloud Storage: {e}[/red]")
                 continue
-            if se_va_a_ejecutar_update_blob_name_in_gcs:
-                try:
-                    update_blob_name_in_gcs(
-                        bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                        old_blob_name=get_blob_name_from_url(url_anterior),
-                        new_blob_name=get_blob_name_from_url(url_correcta),
-                    )
-                except Exception as e:
-                    console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
-                    continue
-            db.add(edicto)
+            style="green"
+        # Agregar renglon a la tabla
+        tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style=style)
+    # Segundo bucle para actualizar y mover
     if save:
+        for edicto in edictos_que_se_pueden_actualizar:
+            try:
+                update_blob_name_in_gcs(
+                    bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                    old_blob_name=get_blob_name_from_url(url_anterior),
+                    new_blob_name=get_blob_name_from_url(url_correcta),
+                )
+            except Exception as e:
+                console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
+                continue
+            db.add(edicto)
+        # Guardar los cambios en la base de datos
         db.commit()
+    # Mostrar la tabla
     console.print(tabla)
