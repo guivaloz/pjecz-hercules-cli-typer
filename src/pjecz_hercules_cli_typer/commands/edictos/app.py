@@ -128,14 +128,14 @@ def update(
     tabla = Table(title=title)
     tabla.add_column("ID", header_style="green", no_wrap=True)
     tabla.add_column("Autoridad", header_style="green")
-    tabla.add_column("Archivo", header_style="green")
-    tabla.add_column("URL", header_style="green")
+    tabla.add_column("Archivo anterior", header_style="green")
+    tabla.add_column("Archivo nuevo", header_style="green")
     tabla.add_column("Estatus", header_style="green")
     for edicto in edictos.all():
         hay_cambios = False
-        # Definir la fecha del edicto en YYYY-MM-DD
+        # Definir el nombre del archivo como YYYY-MM-DD-DESCRIPCION-HASHID.pdf
         fecha = edicto.creado.date()
-        descripcion = safe_string(edicto.descripcion, separator="-")
+        descripcion = safe_string(edicto.descripcion, max_len=200, separator="-")
         hashed_id = str(hashids.encode(edicto.id))
         archivo_correcto = f"{fecha.isoformat()}-{descripcion}-{hashed_id}.pdf"
         # Cambiar el nombre del archivo
@@ -162,8 +162,7 @@ def update(
         style="blue"
         if hay_cambios:
             style="green"
-        # tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, url_anterior, edicto.url, edicto.estatus, style=style)
-        tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.archivo, edicto.url, edicto.estatus, style=style)
+        tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style=style)
         # Si se especificó guardar, guardar los cambios en la base de datos
         if save and hay_cambios:
             se_va_a_ejecutar_update_blob_name_in_gcs = True
