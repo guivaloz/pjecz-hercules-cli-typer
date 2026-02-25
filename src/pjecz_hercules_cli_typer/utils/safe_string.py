@@ -52,9 +52,9 @@ def safe_string(input_str, max_len=250, do_unidecode=True, save_enie=False, to_u
         else:
             new_string = re.sub(r"[^a-záéíóúüñA-ZÁÉÍÓÚÜÑ0-9]+", " ", input_str)
     removed_multiple_spaces = re.sub(r"\s+", " ", new_string).strip()
-    final = removed_multiple_spaces.replace(" ", separator).strip(separator)
+    final = removed_multiple_spaces.replace(" ", separator)
     if to_uppercase:
         final = final.upper()
-    if max_len == 0:
-        return final
-    return (final[:max_len]) if len(final) > max_len else final
+    if max_len > 0 and len(final) > max_len:
+        return final[:max_len].strip(separator)
+    return final.strip(separator)
