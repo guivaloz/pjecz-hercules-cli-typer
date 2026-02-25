@@ -138,7 +138,7 @@ def public_blob_name(
     month_str = MONTHS_ES[fecha.month - 1]
 
     # Get the description as safe string, if it is empty, set it to "SIN_DESCRIPCION"
-    descripcion = safe_string(descripcion, separator="-")
+    descripcion = safe_string(descripcion, max_len=64, separator="-")
     if descripcion == "":
         descripcion = "sin-descripcion"
 

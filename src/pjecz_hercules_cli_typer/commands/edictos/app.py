@@ -89,11 +89,10 @@ def update(
 ):
     """Actualizar los edictos"""
     console = Console()
-    console.print("Actualizando edictos...")
-
-    # Inicializar contadores
-    total_actualizados = 0
-    total_sin_cambios = 0
+    if save:
+        console.print("Actualizando edictos...")
+    else:
+        console.print("Mostrando los cambios que se podrían hacer a los edictos...")
 
     # Obtener configuración
     settings = get_settings()
@@ -129,6 +128,10 @@ def update(
         total = db.query(Edicto).count()
         title = f"Hay {total} edictos en total"
 
+    # Inicializar contadores
+    total_actualizados = 0
+    total_sin_cambios = 0
+
     # Bucle para incrementar el offset hasta que no haya más edictos
     while edictos.count() > 0:
         # Mostrar tabla
@@ -138,14 +141,13 @@ def update(
         tabla.add_column("Archivo anterior", header_style="green")
         tabla.add_column("Archivo nuevo", header_style="green")
         tabla.add_column("Estatus", header_style="green")
-        # Inicializar listado con los edictos que se pueden actualizar
-        edictos_que_se_pueden_actualizar = []
         # Primer bucle para validar
+        contador = 0
         for edicto in edictos.all():
             hay_cambios = False
             # Definir el nombre del archivo como YYYY-MM-DD-DESCRIPCION-HASHID.pdf
             fecha = edicto.creado.date()
-            descripcion = safe_string(edicto.descripcion, max_len=200, separator="-")
+            descripcion = safe_string(edicto.descripcion, max_len=64, separator="-")
             hashed_id = str(hashids.encode(edicto.id))
             archivo_correcto = f"{fecha.isoformat()}-{descripcion}-{hashed_id}.pdf"
             # Cambiar el nombre del archivo
@@ -175,32 +177,38 @@ def update(
                 try:
                     if check_file_exists_from_gcs(
                         bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                        blob_name=get_blob_name_from_url(url_correcta),
+                        blob_name=get_blob_name_from_url(url_anterior),
                     ):
-                        edictos_que_se_pueden_actualizar.append(edicto)
+                        style="green"
+                    else:
+                        style="red"
                 except Exception as e:
                     console.print(f"[red]Error al verificar si el archivo existe en Google Cloud Storage: {e}[/red]")
                     continue
-                style="green"
             # Agregar renglon a la tabla
             tabla.add_row(str(edicto.id), edicto.autoridad.clave, archivo_anterior, edicto.archivo, edicto.estatus, style=style)
-        # Segundo bucle para actualizar y mover
-        if save:
-            for edicto in edictos_que_se_pueden_actualizar:
+            # Si el style NO es green, pasar al siguiente edicto sin actualizar
+            if style != "green":
+                total_sin_cambios += 1
+                continue
+            # Si save es verdadero, mover el blob en Google Cloud Storage y actualizar el URL en la base de datos
+            if save:
                 try:
                     update_blob_name_in_gcs(
                         bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
                         old_blob_name=get_blob_name_from_url(url_anterior),
                         new_blob_name=get_blob_name_from_url(url_correcta),
                     )
+                    db.add(edicto)
+                    contador += 1
                 except Exception as e:
                     console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {e}[/red]")
                     continue
-                db.add(edicto)
-                total_actualizados += 1
-            total_sin_cambios = len(edictos_que_se_pueden_actualizar) - total_actualizados
-            # Guardar los cambios en la base de datos
+        # Guardar los cambios en la base de datos
+        if contador > 0:
+            # console.print(f"[green]Guardando {contador} cambios en la base de datos[/green]")
             db.commit()
+            total_actualizados += contador
         # Mostrar la tabla
         console.print(tabla)
         # Si no se especificó la opción --all, salir del ciclo
@@ -215,5 +223,7 @@ def update(
             edictos = db.query(Edicto).order_by(Edicto.id.desc()).offset(offset).limit(limit)
 
     # Mostrar los contadores
-    console.print(f"[green]Total actualizados: {total_actualizados}[/green]")
-    console.print(f"[blue]Total sin cambios: {total_sin_cambios}[/blue]")
+    if total_actualizados > 0:
+        console.print(f"[green]Total actualizados: {total_actualizados}[/green]")
+    if total_sin_cambios > 0:
+        console.print(f"[blue]Total sin cambios: {total_sin_cambios}[/blue]")
