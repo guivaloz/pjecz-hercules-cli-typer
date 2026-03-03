@@ -44,8 +44,14 @@ class Usuario(Base):
     fin_vales: Mapped[List["FinVale"]] = relationship("FinVale", back_populates="usuario")
     inv_custodias: Mapped[List["InvCustodia"]] = relationship("InvCustodia", back_populates="usuario")
     ofi_documentos: Mapped[List["OfiDocumento"]] = relationship("OfiDocumento", back_populates="usuario")
+    ofi_plantillas: Mapped[List["OfiPlantilla"]] = relationship("OfiPlantilla", back_populates="usuario")
     soportes_tickets: Mapped[List["SoporteTicket"]] = relationship("SoporteTicket", back_populates="usuario")
     usuarios_roles: Mapped[List["UsuarioRol"]] = relationship("UsuarioRol", back_populates="usuario")
+
+    @property
+    def nombre(self):
+        """Junta nombres, apellido primero y apellido segundo"""
+        return self.nombres + " " + self.apellido_paterno + " " + self.apellido_materno
 
     def __repr__(self):
         """Representación"""
