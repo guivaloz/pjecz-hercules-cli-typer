@@ -7,6 +7,7 @@ from functools import lru_cache
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
+from sqlalchemy.sql.functions import now
 from sqlalchemy.types import CHAR
 
 from ..config.settings import get_settings
@@ -15,7 +16,8 @@ from ..config.settings import get_settings
 class Base(DeclarativeBase):
     """Base de los modelos de la base de datos"""
 
-    creado: Mapped[datetime]
+    creado: Mapped[datetime] = mapped_column(default=now(), server_default=now())
+    modificado: Mapped[datetime] = mapped_column(default=now(), onupdate=now(), server_default=now())
     estatus: Mapped[str] = mapped_column(CHAR, default="A")
 
 

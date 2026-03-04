@@ -53,6 +53,24 @@ class Usuario(Base):
         """Junta nombres, apellido primero y apellido segundo"""
         return self.nombres + " " + self.apellido_paterno + " " + self.apellido_materno
 
+    @property
+    def siglas(self):
+        """Genera siglas a partir de los nombres y apellidos"""
+        siglas = ""
+        if self.nombres:
+            nombres_palabras = self.nombres.split()
+            for palabra in nombres_palabras:
+                siglas += palabra[0].upper()
+        if self.apellido_paterno:
+            apellido_paterno_palabras = self.apellido_paterno.split()
+            for palabra in apellido_paterno_palabras:
+                siglas += palabra[0].upper()
+        if self.apellido_materno:
+            apellido_materno_palabras = self.apellido_materno.split()
+            for palabra in apellido_materno_palabras:
+                siglas += palabra[0].upper()
+        return siglas
+
     def __repr__(self):
         """Representación"""
         return f"<Usuario {self.email}>"

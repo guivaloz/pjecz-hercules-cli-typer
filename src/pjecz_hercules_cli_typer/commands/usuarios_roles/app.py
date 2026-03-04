@@ -4,11 +4,10 @@ Usuarios-Roles command
 
 from typer import Typer
 
-from typer import Exit, Option, Typer
+from typer import Exit
 from rich.console import Console
 from rich.table import Table
 
-from ...config.settings import get_settings
 from ...models.autoridades import Autoridad
 from ...models.roles import Rol
 from ...models.usuarios import Usuario
@@ -27,7 +26,7 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
 
     # Consultar
     db = get_database()
-    usuarios_roles = db.query(UsuarioRol).join(Rol, UsuarioRol.rol_id == Rol.id).join(Usuario, UsuarioRol.usuario_id == Usuario.id).join(Autoridad, Usuario.autoridad_id == Autoridad.id)
+    usuarios_roles = db.query(UsuarioRol).join(Rol).join(Usuario).join(Autoridad)
 
     # Si viene la autoridad_clave
     if autoridad_clave != "":
@@ -39,7 +38,7 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
 
     # Si viene el usuario_email
     if usuario_email != "":
-        usuario_email = safe_string(usuario_email)
+        usuario_email = safe_email(usuario_email, search_fragment=True)
         if usuario_email == "":
             console.print("[red]Email de usuario inválido[/red]")
             raise Exit(code=1)
@@ -53,6 +52,9 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
             raise Exit(code=1)
         usuarios_roles = usuarios_roles.filter(Rol.nombre.contains(rol_nombre))
 
+    # Solo los que tengan estatus A
+    usuarios_roles = usuarios_roles.filter(Usuario.estatus == "A")
+
     # Determinar la cantidad total de registros que coinciden con los filtros
     total = usuarios_roles.count()
 
@@ -64,6 +66,6 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
     tabla.add_column("Usuario nombre", header_style="green")
     tabla.add_column("Autoridad", header_style="green")
     tabla.add_column("Usuario puesto", header_style="green")
-    for usuario_rol in usuarios_roles.filter(UsuarioRol.estatus == "A").order_by(Usuario.email).offset(offset).limit(limit).all():
+    for usuario_rol in usuarios_roles.order_by(Usuario.email).offset(offset).limit(limit).all():
         tabla.add_row(str(usuario_rol.id), usuario_rol.rol.nombre, usuario_rol.usuario.email, usuario_rol.usuario.nombre, usuario_rol.usuario.autoridad.clave, usuario_rol.usuario.puesto)
     console.print(tabla)
