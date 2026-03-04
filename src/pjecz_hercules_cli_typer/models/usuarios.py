@@ -44,8 +44,32 @@ class Usuario(Base):
     fin_vales: Mapped[List["FinVale"]] = relationship("FinVale", back_populates="usuario")
     inv_custodias: Mapped[List["InvCustodia"]] = relationship("InvCustodia", back_populates="usuario")
     ofi_documentos: Mapped[List["OfiDocumento"]] = relationship("OfiDocumento", back_populates="usuario")
+    ofi_plantillas: Mapped[List["OfiPlantilla"]] = relationship("OfiPlantilla", back_populates="usuario")
     soportes_tickets: Mapped[List["SoporteTicket"]] = relationship("SoporteTicket", back_populates="usuario")
     usuarios_roles: Mapped[List["UsuarioRol"]] = relationship("UsuarioRol", back_populates="usuario")
+
+    @property
+    def nombre(self):
+        """Junta nombres, apellido primero y apellido segundo"""
+        return self.nombres + " " + self.apellido_paterno + " " + self.apellido_materno
+
+    @property
+    def siglas(self):
+        """Genera siglas a partir de los nombres y apellidos"""
+        siglas = ""
+        if self.nombres:
+            nombres_palabras = self.nombres.split()
+            for palabra in nombres_palabras:
+                siglas += palabra[0].upper()
+        if self.apellido_paterno:
+            apellido_paterno_palabras = self.apellido_paterno.split()
+            for palabra in apellido_paterno_palabras:
+                siglas += palabra[0].upper()
+        if self.apellido_materno:
+            apellido_materno_palabras = self.apellido_materno.split()
+            for palabra in apellido_materno_palabras:
+                siglas += palabra[0].upper()
+        return siglas
 
     def __repr__(self):
         """Representación"""

@@ -92,7 +92,7 @@ def update(
     if save:
         console.print("Actualizando edictos...")
     else:
-        console.print("Mostrando los cambios que se podrían hacer a los edictos...")
+        console.print("Mostrando los cambios que se podrían hacer...")
 
     # Obtener configuración
     settings = get_settings()
