@@ -83,7 +83,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
         ofi_plantillas = ofi_plantillas.filter(Usuario.email.contains(usuario_email))
 
     # Solo los que tengan estatus A
-    ofi_plantillas = ofi_plantillas.filter(Usuario.estatus == "A")
+    ofi_plantillas = ofi_plantillas.filter(OfiPlantilla.estatus == "A")
 
     # Determinar la cantidad total de registros que coinciden con los filtros
     total = ofi_plantillas.count()
@@ -93,6 +93,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
     tabla.add_column("Descripción")
     tabla.add_column("Usuario e-mail")
     tabla.add_column("Usuario nombre")
+    tabla.add_column("Usuario puesto")
     tabla.add_column("Autoridad")
     tabla.add_column("Destinatarios")
     tabla.add_column("Arch.")
@@ -102,6 +103,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
             ofi_plantilla.descripcion,
             ofi_plantilla.usuario.email,
             ofi_plantilla.usuario.nombre,
+            ofi_plantilla.usuario.puesto,
             ofi_plantilla.usuario.autoridad.clave,
             ofi_plantilla.destinatarios_emails or "",
             "Sí" if ofi_plantilla.esta_archivado else "",
@@ -129,8 +131,20 @@ def insert(
     db = get_database()
     usuarios = db.query(Usuario).join(UsuarioRol).join(Rol).join(Autoridad)
 
+    # Filtrar que el puesto del usuario no sea vacío
+    usuarios = usuarios.filter(Usuario.puesto != "")
+
+    # Filtrar que el puesto del usuario no sea ND
+    usuarios = usuarios.filter(Usuario.puesto != "ND")
+
+    # Filtrar que la clave de la autoridad del usuario no sea ND
+    usuarios = usuarios.filter(Autoridad.clave != "ND")
+
     # Filtrar el rol OFICIOS ESCRITOR u OFICIOS FIRMANTE
     usuarios = usuarios.filter(Rol.nombre.in_(["OFICIOS ESCRITOR", "OFICIOS FIRMANTE"]))
+
+    # Filtrar que el estatus de UsuarioRol sea A
+    usuarios = usuarios.filter(UsuarioRol.estatus == "A")
 
     # Si viene la autoridad_clave
     if autoridad_clave != "":
@@ -160,6 +174,7 @@ def insert(
     tabla = Table(title="Oficios Plantillas que empiezan con GENERICO")
     tabla.add_column("Usuario e-mail")
     tabla.add_column("Usuario nombre")
+    tabla.add_column("Usuario puesto")
     tabla.add_column("Autoridad")
     tabla.add_column("Descripción")
     tabla.add_column("Destinatarios")
@@ -169,12 +184,16 @@ def insert(
     # Bucle por cada usuario
     for usuario in usuarios.order_by(Usuario.email).offset(offset).limit(limit).all():
         # Verificar si ya tiene una plantilla genérica
-        plantillas_existentes = db.query(OfiPlantilla).filter(OfiPlantilla.usuario_id == usuario.id, OfiPlantilla.descripcion.startswith('GENERICO'))
+        plantillas_existentes = db.query(OfiPlantilla)
+        plantillas_existentes = plantillas_existentes.filter(OfiPlantilla.usuario_id == usuario.id)
+        plantillas_existentes = plantillas_existentes.filter(OfiPlantilla.descripcion.startswith('GENERICO'))
+        plantillas_existentes = plantillas_existentes.filter(OfiPlantilla.estatus == "A")
         if plantillas_existentes.count() > 0:
             for plantilla_existente in plantillas_existentes.all():
                 tabla.add_row(
                     usuario.email,
                     usuario.nombre,
+                    usuario.puesto,
                     usuario.autoridad.clave,
                     plantilla_existente.descripcion,
                     plantilla_existente.destinatarios_emails or "",
@@ -217,6 +236,7 @@ def insert(
         tabla.add_row(
             usuario.email,
             usuario.nombre,
+            usuario.puesto,
             usuario.autoridad.clave,
             ofi_plantilla.descripcion,
             ofi_plantilla.destinatarios_emails or "",
