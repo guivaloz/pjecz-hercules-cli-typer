@@ -5,16 +5,17 @@ Edictos command
 from typing import Annotated
 
 from hashids import Hashids
-from typer import Exit, Option, Typer
 from rich.console import Console
 from rich.table import Table
+from sqlalchemy import select
+from typer import Exit, Option, Typer
 
-from ...config.settings import get_settings
-from ...models.autoridades import Autoridad
-from ...models.edictos import Edicto
-from ...utils.database import get_database
-from ...utils.google_cloud_storage import check_file_exists_from_gcs, get_blob_name_from_url, public_blob_name, update_blob_name_in_gcs
-from ...utils.safe_string import safe_clave, safe_string
+from ..config.settings import get_settings
+from ..models.autoridades import Autoridad
+from ..models.edictos import Edicto
+from ..utils.database import get_database
+from ..utils.google_cloud_storage import check_file_exists_from_gcs, get_blob_name_from_url, public_blob_name, update_blob_name_in_gcs
+from ..utils.safe_string import safe_clave, safe_string
 
 app = Typer(help="Edictos")
 
@@ -28,10 +29,23 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
     # Consultar
     db = get_database()
 
-    # Si se especificó un ID, consultar un edicto
-    if edicto_id:
-        edicto = db.query(Edicto).get(edicto_id)
-        if edicto:
+    # Si viene edicto_id, consultar un edicto específico
+    if edicto_id != 0:
+        stmt = (
+            select(
+                Edicto.id,
+                Autoridad.clave,
+                Edicto.expediente,
+                Edicto.descripcion,
+                Edicto.estatus,
+            ).join(
+                Autoridad,
+            ).where(
+                Edicto.id == edicto_id,
+            )
+        )
+        edicto = db.execute(stmt).first()
+        if edicto is not None:
             console.print(f"ID: {edicto.id}")
             console.print(f"Autoridad: {edicto.autoridad.clave}")
             console.print(f"Expediente: {edicto.expediente}")
@@ -41,42 +55,37 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
             console.print(f"No se encontró el edicto con ID {edicto_id}")
         return
 
-    # Si se especificó una clave de autoridad, consultar los edictos de esa autoridad
-    if autoridad_clave:
+    # Preparar la consulta base
+    stmt = (
+        select(
+            Edicto.id,
+            Autoridad.clave,
+            Edicto.expediente,
+            Edicto.descripcion,
+            Edicto.estatus,
+        ).join(
+            Autoridad,
+        )
+    )
+
+    # Si viene autoridad_clave, consultar los edictos de esa autoridad
+    if autoridad_clave != "":
         autoridad_clave = safe_clave(autoridad_clave)
         if autoridad_clave == "":
             console.print("[red]Clave inválida[/red]")
             raise Exit(code=1)
-        edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).offset(offset).limit(limit)
-        if edictos.count() == 0:
-            console.print(f"[yellow]No se encontraron edictos para la autoridad {autoridad_clave}[/yellow]")
-            raise Exit(code=1)
-        else:
-            tabla = Table(title=f"Edictos de la autoridad {autoridad_clave}")
-            tabla.add_column("ID", header_style="green", no_wrap=True)
-            tabla.add_column("Autoridad", header_style="green")
-            tabla.add_column("Expediente", header_style="green")
-            tabla.add_column("Descripción", header_style="green")
-            tabla.add_column("Estatus", header_style="green")
-            for edicto in edictos.limit(limit).all():
-                tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.expediente, edicto.descripcion, edicto.estatus)
-            console.print(tabla)
-        return
+        stmt = stmt.where(Autoridad.clave == autoridad_clave)
 
-    # Consultar los edictos más recientes
-    edictos = db.query(Edicto).order_by(Edicto.id.desc()).offset(offset).limit(limit)
-    if edictos.count() == 0:
-        console.print("[yellow]No se encontraron edictos[/yellow]")
-    else:
-        tabla = Table(title="Edictos más recientes")
-        tabla.add_column("ID", header_style="green", no_wrap=True)
-        tabla.add_column("Autoridad", header_style="green")
-        tabla.add_column("Expediente", header_style="green")
-        tabla.add_column("Descripción", header_style="green")
-        tabla.add_column("Estatus", header_style="green")
-        for edicto in edictos.all():
-            tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.expediente, edicto.descripcion, edicto.estatus)
-        console.print(tabla)
+    # Mostrar tabla con los edictos
+    tabla = Table(title=f"Edictos de la autoridad {autoridad_clave}")
+    tabla.add_column("ID", header_style="green", no_wrap=True)
+    tabla.add_column("Autoridad", header_style="green")
+    tabla.add_column("Expediente", header_style="green")
+    tabla.add_column("Descripción", header_style="green")
+    tabla.add_column("Estatus", header_style="green")
+    for item in db.execute(stmt):
+        tabla.add_row(str(item.id), item.autoridad.clave, item.expediente, item.descripcion, item.estatus)
+    console.print(tabla)
 
 
 @app.command()

@@ -4,17 +4,18 @@ Oficios Plantillas command
 
 from typing import Annotated
 
-from typer import Exit, Option, Typer
 from rich.console import Console
 from rich.table import Table
+from sqlalchemy import select
+from typer import Exit, Option, Typer
 
-from ...models.autoridades import Autoridad
-from ...models.ofi_plantillas import OfiPlantilla
-from ...models.roles import Rol
-from ...models.usuarios import Usuario
-from ...models.usuarios_roles import UsuarioRol
-from ...utils.database import get_database
-from ...utils.safe_string import safe_clave, safe_email, safe_string
+from ..models.autoridades import Autoridad
+from ..models.ofi_plantillas import OfiPlantilla
+from ..models.roles import Rol
+from ..models.usuarios import Usuario
+from ..models.usuarios_roles import UsuarioRol
+from ..utils.database import get_database
+from ..utils.safe_string import safe_clave, safe_email, safe_string
 
 app = Typer(help="Oficios Plantillas")
 
@@ -56,7 +57,23 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
 
     # Consultar
     db = get_database()
-    ofi_plantillas = db.query(OfiPlantilla).join(Usuario).join(Autoridad)
+
+    # Preparar consulta base
+    stmt = (
+        select(
+            OfiPlantilla.descripcion,
+            Usuario.email,
+            Usuario.puesto,
+            Autoridad.clave,
+            OfiPlantilla.destinatarios_emails,
+            OfiPlantilla.esta_archivado,
+            OfiPlantilla.esta_compartida,
+        ).join(
+            Usuario,
+        ).join(
+            Autoridad,
+        )
+    )
 
     # Si viene la autoridad_clave
     if autoridad_clave != "":
@@ -64,7 +81,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
         if autoridad_clave == "":
             console.print("[red]Clave de autoridad inválida[/red]")
             raise Exit(code=1)
-        ofi_plantillas = ofi_plantillas.filter(Autoridad.clave.contains(autoridad_clave))
+        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
 
     # Si viene la descripción
     if descripcion != "":
@@ -72,7 +89,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
         if descripcion == "":
             console.print("[red]Descripción inválida[/red]")
             raise Exit(code=1)
-        ofi_plantillas = ofi_plantillas.filter(OfiPlantilla.descripcion.contains(descripcion))
+        stmt = stmt.filter(OfiPlantilla.descripcion.contains(descripcion))
 
     # Si viene el usuario_email
     if usuario_email != "":
@@ -80,34 +97,30 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
         if usuario_email == "":
             console.print("[red]Email de usuario inválido[/red]")
             raise Exit(code=1)
-        ofi_plantillas = ofi_plantillas.filter(Usuario.email.contains(usuario_email))
+        stmt = stmt.filter(Usuario.email.contains(usuario_email))
 
     # Solo los que tengan estatus A
-    ofi_plantillas = ofi_plantillas.filter(OfiPlantilla.estatus == "A")
-
-    # Determinar la cantidad total de registros que coinciden con los filtros
-    total = ofi_plantillas.count()
+    stmt = stmt.filter(OfiPlantilla.estatus == "A")
+    stmt = stmt.order_by(OfiPlantilla.descripcion).offset(offset).limit(limit)
 
     # Mostrar tabla
-    tabla = Table(title=f"Hay {total} Oficios Plantillas")
+    tabla = Table(title="Oficios Plantillas")
     tabla.add_column("Descripción")
     tabla.add_column("Usuario e-mail")
-    tabla.add_column("Usuario nombre")
     tabla.add_column("Usuario puesto")
     tabla.add_column("Autoridad")
     tabla.add_column("Destinatarios")
     tabla.add_column("Arch.")
     tabla.add_column("Comp.")
-    for ofi_plantilla in ofi_plantillas.order_by(OfiPlantilla.descripcion).offset(offset).limit(limit).all():
+    for item in db.execute(stmt):
         tabla.add_row(
-            ofi_plantilla.descripcion,
-            ofi_plantilla.usuario.email,
-            ofi_plantilla.usuario.nombre,
-            ofi_plantilla.usuario.puesto,
-            ofi_plantilla.usuario.autoridad.clave,
-            ofi_plantilla.destinatarios_emails or "",
-            "Sí" if ofi_plantilla.esta_archivado else "",
-            "Sí" if ofi_plantilla.esta_compartida else "",
+            item.descripcion,
+            item.email,
+            item.puesto,
+            item.clave,
+            item.destinatarios_emails or "",
+            "Sí" if item.esta_archivado else "",
+            "Sí" if item.esta_compartida else "",
         )
     console.print(tabla)
 

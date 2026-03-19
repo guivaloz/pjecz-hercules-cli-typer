@@ -4,16 +4,17 @@ Usuarios-Roles command
 
 from typer import Typer
 
-from typer import Exit
 from rich.console import Console
 from rich.table import Table
+from sqlalchemy import select
+from typer import Exit
 
-from ...models.autoridades import Autoridad
-from ...models.roles import Rol
-from ...models.usuarios import Usuario
-from ...models.usuarios_roles import UsuarioRol
-from ...utils.database import get_database
-from ...utils.safe_string import safe_clave, safe_email, safe_string
+from ..models.autoridades import Autoridad
+from ..models.roles import Rol
+from ..models.usuarios import Usuario
+from ..models.usuarios_roles import UsuarioRol
+from ..utils.database import get_database
+from ..utils.safe_string import safe_clave, safe_email, safe_string
 
 app = Typer(help="Usuarios-Roles")
 
@@ -26,7 +27,23 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
 
     # Consultar
     db = get_database()
-    usuarios_roles = db.query(UsuarioRol).join(Rol).join(Usuario).join(Autoridad)
+
+    # Preparar consulta base
+    stmt = (
+        select(
+            UsuarioRol.id,
+            Rol.nombre,
+            Usuario.email,
+            Autoridad.clave,
+            Usuario.puesto,
+        ).join(
+            Rol,
+        ).join(
+            Usuario,
+        ).join(
+            Autoridad,
+        )
+    )
 
     # Si viene la autoridad_clave
     if autoridad_clave != "":
@@ -34,7 +51,7 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
         if autoridad_clave == "":
             console.print("[red]Clave de autoridad inválida[/red]")
             raise Exit(code=1)
-        usuarios_roles = usuarios_roles.filter(Autoridad.clave.contains(autoridad_clave))
+        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
 
     # Si viene el usuario_email
     if usuario_email != "":
@@ -42,7 +59,7 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
         if usuario_email == "":
             console.print("[red]Email de usuario inválido[/red]")
             raise Exit(code=1)
-        usuarios_roles = usuarios_roles.filter(Usuario.email.contains(usuario_email))
+        stmt = stmt.filter(Usuario.email.contains(usuario_email))
 
     # Si viene el rol_nombre
     if rol_nombre != "":
@@ -50,22 +67,27 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
         if rol_nombre == "":
             console.print("[red]Nombre de rol inválido[/red]")
             raise Exit(code=1)
-        usuarios_roles = usuarios_roles.filter(Rol.nombre.contains(rol_nombre))
+        stmt = stmt.filter(Rol.nombre.contains(rol_nombre))
 
     # Solo los que tengan estatus A
-    usuarios_roles = usuarios_roles.filter(Usuario.estatus == "A")
-
-    # Determinar la cantidad total de registros que coinciden con los filtros
-    total = usuarios_roles.count()
+    stmt = stmt.filter(Usuario.estatus == "A")
+    stmt = stmt.order_by(Usuario.email).offset(offset).limit(limit)
 
     # Mostrar tabla
-    tabla = Table(title=f"Hay {total} Usuarios-Roles")
+    tabla = Table(title="Usuarios-Roles")
     tabla.add_column("ID", header_style="green", no_wrap=True)
     tabla.add_column("Rol nombre", header_style="green")
     tabla.add_column("Usuario email", header_style="green")
     tabla.add_column("Usuario nombre", header_style="green")
     tabla.add_column("Autoridad", header_style="green")
     tabla.add_column("Usuario puesto", header_style="green")
-    for usuario_rol in usuarios_roles.order_by(Usuario.email).offset(offset).limit(limit).all():
-        tabla.add_row(str(usuario_rol.id), usuario_rol.rol.nombre, usuario_rol.usuario.email, usuario_rol.usuario.nombre, usuario_rol.usuario.autoridad.clave, usuario_rol.usuario.puesto)
+    for item in db.execute(stmt):
+        tabla.add_row(
+            str(item.id),
+            item.nombre,
+            item.email,
+            item.nombre,
+            item.clave,
+            item.puesto,
+        )
     console.print(tabla)

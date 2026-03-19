@@ -6,12 +6,12 @@ Interfaz de linea de comandos hecha con Typer y Python para Plataforma Web.
 
 from typer import Typer
 
-from .commands.autoridades.app import app as autoridades_app
-from .commands.distritos.app import app as distritos_app
-from .commands.edictos.app import app as edictos_app
-from .commands.materias.app import app as materias_app
-from .commands.ofi_plantillas.app import app as ofi_plantillas_app
-from .commands.usuarios_roles.app import app as usuarios_roles_app
+from .commands.autoridades import app as autoridades_app
+from .commands.distritos import app as distritos_app
+from .commands.edictos import app as edictos_app
+from .commands.materias import app as materias_app
+from .commands.ofi_plantillas import app as ofi_plantillas_app
+from .commands.usuarios_roles import app as usuarios_roles_app
 
 app = Typer()
 app.add_typer(autoridades_app, name="autoridades")
