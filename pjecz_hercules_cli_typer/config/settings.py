@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     CLOUD_STORAGE_DEPOSITO_LISTAS_DE_ACUERDOS: str = ""
     CLOUD_STORAGE_DEPOSITO_OFICIOS: str = ""
     CLOUD_STORAGE_DEPOSITO_SENTENCIAS: str = ""
+    CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES: str = ""
     DB_USER: str = "username"
     DB_PASS: str = "password"
     DB_HOST: str = "localhost"

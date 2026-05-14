@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..utils.database import Base
+from pjecz_hercules_cli_typer.utils.database import Base
 
 
 class SoporteTicket(Base):
@@ -46,10 +46,10 @@ class SoporteTicket(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     # Claves foráneas
-    #funcionario_id: Mapped[int] = mapped_column(ForeignKey("funcionarios.id"))
-    #funcionario: Mapped["Funcionario"] = relationship(back_populates="soportes_tickets")
-    #soporte_categoria_id: Mapped[int] = mapped_column(ForeignKey("soportes_categorias.id"))
-    #soporte_categoria: Mapped["SoporteCategoria"] = relationship(back_populates="soportes_tickets")
+    # funcionario_id: Mapped[int] = mapped_column(ForeignKey("funcionarios.id"))
+    # funcionario: Mapped["Funcionario"] = relationship(back_populates="soportes_tickets")
+    # soporte_categoria_id: Mapped[int] = mapped_column(ForeignKey("soportes_categorias.id"))
+    # soporte_categoria: Mapped["SoporteCategoria"] = relationship(back_populates="soportes_tickets")
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"))
     usuario: Mapped["Usuario"] = relationship(back_populates="soportes_tickets")
 

@@ -7,7 +7,7 @@ from typing import List, Optional
 from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..utils.database import Base
+from pjecz_hercules_cli_typer.utils.database import Base
 
 
 class Usuario(Base):

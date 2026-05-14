@@ -26,11 +26,13 @@ then
     echo "-- Variables de entorno"
     # export $(grep -v '^#' .env | xargs)
     source .env && export $(sed '/^#/d' .env | cut -d= -f1)
+    export GOOGLE_APPLICATION_CREDENTIALS=/home/guivaloz/.google-application-credentials/pjecz-gob-mx-guivaloz-en-mnemosine.json
     echo "   CLOUD_STORAGE_DEPOSITO_EDICTOS: ${CLOUD_STORAGE_DEPOSITO_EDICTOS}"
     echo "   CLOUD_STORAGE_DEPOSITO_GLOSAS: ${CLOUD_STORAGE_DEPOSITO_GLOSAS}"
     echo "   CLOUD_STORAGE_DEPOSITO_LISTAS_DE_ACUERDOS: ${CLOUD_STORAGE_DEPOSITO_LISTAS_DE_ACUERDOS}"
     echo "   CLOUD_STORAGE_DEPOSITO_OFICIOS: ${CLOUD_STORAGE_DEPOSITO_OFICIOS}"
     echo "   CLOUD_STORAGE_DEPOSITO_SENTENCIAS: ${CLOUD_STORAGE_DEPOSITO_SENTENCIAS}"
+    echo "   CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES: ${CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES}"
     echo "   DB_HOST: ${DB_HOST}"
     echo "   DB_PORT: ${DB_PORT}"
     echo "   DB_NAME: ${DB_NAME}"

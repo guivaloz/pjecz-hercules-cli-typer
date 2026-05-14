@@ -2,15 +2,15 @@
 Oficios Documentos
 """
 
-from datetime import datetime, date
-from typing import Optional
 import uuid
+from datetime import date, datetime
+from typing import Optional
 
 from sqlalchemy import Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..utils.database import Base
+from pjecz_hercules_cli_typer.utils.database import Base
 
 
 class OfiDocumento(Base):

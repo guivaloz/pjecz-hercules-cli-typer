@@ -7,7 +7,7 @@ from typing import List
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..utils.database import Base
+from pjecz_hercules_cli_typer.utils.database import Base
 
 
 class Autoridad(Base):
@@ -44,9 +44,10 @@ class Autoridad(Base):
 
     # Hijos
     edictos: Mapped[List["Edicto"]] = relationship("Edicto", back_populates="autoridad")
-    listas_de_acuerdos: Mapped[List["ListaDeAcuerdo"]] = relationship( "ListaDeAcuerdo", back_populates="autoridad" )
+    listas_de_acuerdos: Mapped[List["ListaDeAcuerdo"]] = relationship("ListaDeAcuerdo", back_populates="autoridad")
     sentencias: Mapped[List["Sentencia"]] = relationship("Sentencia", back_populates="autoridad")
     usuarios: Mapped[List["Usuario"]] = relationship("Usuario", back_populates="autoridad")
+    vsp_digitalizaciones: Mapped[List["VspDigitalizacion"]] = relationship(back_populates="autoridad")
 
     def __repr__(self):
         """Representación"""

@@ -8,8 +8,9 @@ from urllib.parse import unquote, urlparse
 
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
+from google.cloud.storage import Blob
 
-from .safe_string import safe_string
+from pjecz_hercules_cli_typer.utils.safe_string import safe_string
 
 EXTENSIONS_MEDIA_TYPES = {
     "doc": "application/msword",
@@ -23,9 +24,23 @@ EXTENSIONS_MEDIA_TYPES = {
     "xlsx": "xapplication/vnd.ms-excel",
 }
 
-MONTHS_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+MONTHS_ES = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+]
 
 GOOGLE_STORAGE_HOST = "https://storage.googleapis.com"
+
 
 class BucketNotFoundError(Exception):
     """Custom exception for bucket not found"""
@@ -120,7 +135,7 @@ def public_blob_name(
     fecha: date,
     descripcion: str,
     hashed_id: str,
-    extension: str
+    extension: str,
 ) -> str:
     """
     Get blob name from filename
@@ -155,7 +170,6 @@ def public_blob_name(
 
     # Return base, year, month, day and filename separated by slashes
     return f"{GOOGLE_STORAGE_HOST}/{bucket_name}/{path_str}"
-
 
 
 def get_blob_name_from_url(url: str) -> str:
@@ -332,3 +346,26 @@ def update_blob_name_in_gcs(bucket_name: str, old_blob_name: str, new_blob_name:
 
     # Return public URL of the new blob
     return new_blob.public_url
+
+
+def get_blobs_from_gcs(bucket_name: str, prefix: str) -> list[Blob]:
+    """
+    Get list of blob names from Google Cloud Storage with a given prefix
+
+    :param bucket_name: Name of the bucket
+    :param prefix: Prefix to filter blobs
+    :return: List of blob names
+    """
+
+    # Get bucket
+    storage_client = storage.Client()
+    try:
+        bucket = storage_client.get_bucket(bucket_name)
+    except NotFound as error:
+        raise BucketNotFoundError("Bucket no encontrado") from error
+
+    # List blobs with the given prefix
+    blobs = bucket.list_blobs(prefix=prefix)
+
+    # Return list of blobs
+    return [blob for blob in blobs]

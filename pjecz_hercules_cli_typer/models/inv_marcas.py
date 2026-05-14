@@ -7,11 +7,10 @@ from typing import List
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..utils.database import Base
+from pjecz_hercules_cli_typer.utils.database import Base
 
 
 class InvMarca(Base):
-
     # Nombre de la tabla
     __tablename__ = "inv_marcas"
 

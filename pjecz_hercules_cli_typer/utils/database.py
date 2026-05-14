@@ -6,11 +6,11 @@ from datetime import datetime
 from functools import lru_cache
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.sql.functions import now
 from sqlalchemy.types import CHAR
 
-from ..config.settings import get_settings
+from pjecz_hercules_cli_typer.config.settings import get_settings
 
 
 class Base(DeclarativeBase):
