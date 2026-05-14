@@ -7,9 +7,9 @@ from rich.table import Table
 from sqlalchemy import select
 from typer import Exit, Typer
 
-from ..models.distritos import Distrito
-from ..utils.database import get_database
-from ..utils.safe_string import safe_clave
+from pjecz_hercules_cli_typer.models.distritos import Distrito
+from pjecz_hercules_cli_typer.utils.database import get_database
+from pjecz_hercules_cli_typer.utils.safe_string import safe_clave
 
 app = Typer(help="Distritos")
 
@@ -30,14 +30,12 @@ def query(clave: str = "", offset: int = 0, limit: int = 10):
         if clave == "":
             console.print("[red]Clave inválida[/red]")
             raise Exit(code=1)
-        stmt = (
-            select(
-                Distrito.clave,
-                Distrito.nombre,
-                Distrito.nombre_corto,
-                Distrito.estatus,
-            ).where(Distrito.clave == clave)
-        )
+        stmt = select(
+            Distrito.clave,
+            Distrito.nombre,
+            Distrito.nombre_corto,
+            Distrito.estatus,
+        ).where(Distrito.clave == clave)
         distrito = db.execute(stmt).first()
         if distrito is None:
             console.print(f"[yellow]No se encontró una distrito con la clave {clave}[/yellow]")
@@ -55,7 +53,10 @@ def query(clave: str = "", offset: int = 0, limit: int = 10):
             Distrito.nombre,
             Distrito.nombre_corto,
             Distrito.estatus,
-        ).order_by(Distrito.clave).offset(offset).limit(limit)
+        )
+        .order_by(Distrito.clave)
+        .offset(offset)
+        .limit(limit)
     )
     tabla = Table(title="Distritos")
     tabla.add_column("Clave", header_style="green", no_wrap=True)

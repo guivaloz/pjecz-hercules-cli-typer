@@ -10,12 +10,17 @@ from rich.table import Table
 from sqlalchemy import select
 from typer import Exit, Option, Typer
 
-from ..config.settings import get_settings
-from ..models.autoridades import Autoridad
-from ..models.edictos import Edicto
-from ..utils.database import get_database
-from ..utils.google_cloud_storage import check_file_exists_from_gcs, get_blob_name_from_url, public_blob_name, update_blob_name_in_gcs
-from ..utils.safe_string import safe_clave, safe_string
+from pjecz_hercules_cli_typer.config.settings import get_settings
+from pjecz_hercules_cli_typer.models.autoridades import Autoridad
+from pjecz_hercules_cli_typer.models.edictos import Edicto
+from pjecz_hercules_cli_typer.utils.database import get_database
+from pjecz_hercules_cli_typer.utils.google_cloud_storage import (
+    check_file_exists_from_gcs,
+    get_blob_name_from_url,
+    public_blob_name,
+    update_blob_name_in_gcs,
+)
+from pjecz_hercules_cli_typer.utils.safe_string import safe_clave, safe_string
 
 app = Typer(help="Edictos")
 
@@ -38,9 +43,11 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
                 Edicto.expediente,
                 Edicto.descripcion,
                 Edicto.estatus,
-            ).join(
+            )
+            .join(
                 Autoridad,
-            ).where(
+            )
+            .where(
                 Edicto.id == edicto_id,
             )
         )
@@ -56,16 +63,14 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
         return
 
     # Preparar la consulta base
-    stmt = (
-        select(
-            Edicto.id,
-            Autoridad.clave,
-            Edicto.expediente,
-            Edicto.descripcion,
-            Edicto.estatus,
-        ).join(
-            Autoridad,
-        )
+    stmt = select(
+        Edicto.id,
+        Autoridad.clave,
+        Edicto.expediente,
+        Edicto.descripcion,
+        Edicto.estatus,
+    ).join(
+        Autoridad,
     )
 
     # Si viene autoridad_clave, consultar los edictos de esa autoridad
@@ -122,7 +127,14 @@ def update(
         if autoridad_clave == "":
             console.print("[red]Clave inválida[/red]")
             raise Exit(code=1)
-        edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).offset(offset).limit(limit)
+        edictos = (
+            db.query(Edicto)
+            .join(Autoridad)
+            .filter(Autoridad.clave == autoridad_clave)
+            .order_by(Edicto.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         if edictos.count() == 0:
             console.print(f"[yellow]No se encontraron edictos para la autoridad {autoridad_clave}[/yellow]")
             raise Exit(code=1)
@@ -180,7 +192,7 @@ def update(
                 edicto.url = url_correcta
                 hay_cambios = True
             # Por defecto el renglon es azul
-            style="blue"
+            style = "blue"
             # Si hay cambios
             if hay_cambios:
                 try:
@@ -188,9 +200,9 @@ def update(
                         bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
                         blob_name=get_blob_name_from_url(url_anterior),
                     ):
-                        style="green"
+                        style = "green"
                     else:
-                        style="red"
+                        style = "red"
                 except Exception as e:
                     console.print(f"[red]Error al verificar si el archivo existe en Google Cloud Storage: {e}[/red]")
                     continue
@@ -227,7 +239,14 @@ def update(
         offset += limit
         # Consultar los siguientes edictos
         if autoridad_clave:
-            edictos = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).order_by(Edicto.id.desc()).offset(offset).limit(limit)
+            edictos = (
+                db.query(Edicto)
+                .join(Autoridad)
+                .filter(Autoridad.clave == autoridad_clave)
+                .order_by(Edicto.id.desc())
+                .offset(offset)
+                .limit(limit)
+            )
         else:
             edictos = db.query(Edicto).order_by(Edicto.id.desc()).offset(offset).limit(limit)
 

@@ -9,13 +9,13 @@ from rich.table import Table
 from sqlalchemy import select
 from typer import Exit, Option, Typer
 
-from ..models.autoridades import Autoridad
-from ..models.ofi_plantillas import OfiPlantilla
-from ..models.roles import Rol
-from ..models.usuarios import Usuario
-from ..models.usuarios_roles import UsuarioRol
-from ..utils.database import get_database
-from ..utils.safe_string import safe_clave, safe_email, safe_string
+from pjecz_hercules_cli_typer.models.autoridades import Autoridad
+from pjecz_hercules_cli_typer.models.ofi_plantillas import OfiPlantilla
+from pjecz_hercules_cli_typer.models.roles import Rol
+from pjecz_hercules_cli_typer.models.usuarios import Usuario
+from pjecz_hercules_cli_typer.models.usuarios_roles import UsuarioRol
+from pjecz_hercules_cli_typer.utils.database import get_database
+from pjecz_hercules_cli_typer.utils.safe_string import safe_clave, safe_email, safe_string
 
 app = Typer(help="Oficios Plantillas")
 
@@ -68,9 +68,11 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
             OfiPlantilla.destinatarios_emails,
             OfiPlantilla.esta_archivado,
             OfiPlantilla.esta_compartida,
-        ).join(
+        )
+        .join(
             Usuario,
-        ).join(
+        )
+        .join(
             Autoridad,
         )
     )
@@ -199,7 +201,7 @@ def insert(
         # Verificar si ya tiene una plantilla genérica
         plantillas_existentes = db.query(OfiPlantilla)
         plantillas_existentes = plantillas_existentes.filter(OfiPlantilla.usuario_id == usuario.id)
-        plantillas_existentes = plantillas_existentes.filter(OfiPlantilla.descripcion.startswith('GENERICO'))
+        plantillas_existentes = plantillas_existentes.filter(OfiPlantilla.descripcion.startswith("GENERICO"))
         plantillas_existentes = plantillas_existentes.filter(OfiPlantilla.estatus == "A")
         if plantillas_existentes.count() > 0:
             for plantilla_existente in plantillas_existentes.all():
@@ -230,16 +232,16 @@ def insert(
 
         # Crear plantilla genérica
         ofi_plantilla = OfiPlantilla(
-            usuario_id = usuario.id,
-            descripcion = f"GENERICO {usuario.siglas}",
-            destinatarios_emails = None,
-            con_copias_emails = None,
-            remitente_email = None,
-            esta_archivado = False,
-            esta_compartida = False,
-            contenido_html = contenido_html,
-            contenido_md = None,
-            contenido_sfdt = None,
+            usuario_id=usuario.id,
+            descripcion=f"GENERICO {usuario.siglas}",
+            destinatarios_emails=None,
+            con_copias_emails=None,
+            remitente_email=None,
+            esta_archivado=False,
+            esta_compartida=False,
+            contenido_html=contenido_html,
+            contenido_md=None,
+            contenido_sfdt=None,
         )
         if save:
             db.add(ofi_plantilla)

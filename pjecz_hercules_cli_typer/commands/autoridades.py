@@ -7,9 +7,9 @@ from rich.table import Table
 from sqlalchemy import select
 from typer import Exit, Typer
 
-from ..models.autoridades import Autoridad
-from ..utils.database import get_database
-from ..utils.safe_string import safe_clave
+from pjecz_hercules_cli_typer.models.autoridades import Autoridad
+from pjecz_hercules_cli_typer.utils.database import get_database
+from pjecz_hercules_cli_typer.utils.safe_string import safe_clave
 
 app = Typer(help="Autoridades")
 
@@ -30,18 +30,16 @@ def query(clave: str = "", offset: int = 0, limit: int = 10):
         if clave == "":
             console.print("[red]Clave inválida[/red]")
             raise Exit(code=1)
-        stmt = (
-            select(
-                Autoridad.clave,
-                Autoridad.descripcion,
-                Autoridad.descripcion_corta,
-                Autoridad.directorio_edictos,
-                Autoridad.directorio_glosas,
-                Autoridad.directorio_listas_de_acuerdos,
-                Autoridad.directorio_sentencias,
-                Autoridad.estatus,
-            ).where(Autoridad.clave == clave)
-        )
+        stmt = select(
+            Autoridad.clave,
+            Autoridad.descripcion,
+            Autoridad.descripcion_corta,
+            Autoridad.directorio_edictos,
+            Autoridad.directorio_glosas,
+            Autoridad.directorio_listas_de_acuerdos,
+            Autoridad.directorio_sentencias,
+            Autoridad.estatus,
+        ).where(Autoridad.clave == clave)
         autoridad = db.execute(stmt).first()
         if autoridad is not None:
             # Mostrar detalle de una autoridad y salir
@@ -56,13 +54,11 @@ def query(clave: str = "", offset: int = 0, limit: int = 10):
             return Exit(code=0)
 
     # De lo contrario, mostrar tabla con autoridades
-    stmt = (
-        select(
-            Autoridad.clave,
-            Autoridad.descripcion,
-            Autoridad.descripcion_corta,
-            Autoridad.estatus,
-        )
+    stmt = select(
+        Autoridad.clave,
+        Autoridad.descripcion,
+        Autoridad.descripcion_corta,
+        Autoridad.estatus,
     )
     if clave != "":
         stmt = stmt.where(Autoridad.clave.contains(clave))

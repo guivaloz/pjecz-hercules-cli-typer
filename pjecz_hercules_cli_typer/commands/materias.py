@@ -7,9 +7,9 @@ from rich.table import Table
 from sqlalchemy import select
 from typer import Exit, Typer
 
-from ..models.materias import Materia
-from ..utils.database import get_database
-from ..utils.safe_string import safe_clave
+from pjecz_hercules_cli_typer.models.materias import Materia
+from pjecz_hercules_cli_typer.utils.database import get_database
+from pjecz_hercules_cli_typer.utils.safe_string import safe_clave
 
 app = Typer(help="Materias")
 
@@ -30,13 +30,11 @@ def query(clave: str = "", offset: int = 0, limit: int = 10):
         if clave == "":
             console.print("[red]Clave inválida[/red]")
             raise Exit(code=1)
-        stmt = (
-            select(
-                Materia.clave,
-                Materia.nombre,
-                Materia.estatus,
-            ).where(Materia.clave == clave)
-        )
+        stmt = select(
+            Materia.clave,
+            Materia.nombre,
+            Materia.estatus,
+        ).where(Materia.clave == clave)
         materia = db.execute(stmt).first()
         if materia is None:
             console.print(f"[yellow]No se encontró una materia con la clave {clave}[/yellow]")
@@ -52,7 +50,10 @@ def query(clave: str = "", offset: int = 0, limit: int = 10):
             Materia.clave,
             Materia.nombre,
             Materia.estatus,
-        ).order_by(Materia.clave).offset(offset).limit(limit)
+        )
+        .order_by(Materia.clave)
+        .offset(offset)
+        .limit(limit)
     )
     tabla = Table(title="Materias")
     tabla.add_column("Clave", header_style="green", no_wrap=True)

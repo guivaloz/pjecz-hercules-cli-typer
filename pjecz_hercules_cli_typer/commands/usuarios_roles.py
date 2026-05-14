@@ -2,19 +2,17 @@
 Usuarios-Roles command
 """
 
-from typer import Typer
-
 from rich.console import Console
 from rich.table import Table
 from sqlalchemy import select
-from typer import Exit
+from typer import Exit, Typer
 
-from ..models.autoridades import Autoridad
-from ..models.roles import Rol
-from ..models.usuarios import Usuario
-from ..models.usuarios_roles import UsuarioRol
-from ..utils.database import get_database
-from ..utils.safe_string import safe_clave, safe_email, safe_string
+from pjecz_hercules_cli_typer.models.autoridades import Autoridad
+from pjecz_hercules_cli_typer.models.roles import Rol
+from pjecz_hercules_cli_typer.models.usuarios import Usuario
+from pjecz_hercules_cli_typer.models.usuarios_roles import UsuarioRol
+from pjecz_hercules_cli_typer.utils.database import get_database
+from pjecz_hercules_cli_typer.utils.safe_string import safe_clave, safe_email, safe_string
 
 app = Typer(help="Usuarios-Roles")
 
@@ -36,11 +34,14 @@ def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = 
             Usuario.email,
             Autoridad.clave,
             Usuario.puesto,
-        ).join(
+        )
+        .join(
             Rol,
-        ).join(
+        )
+        .join(
             Usuario,
-        ).join(
+        )
+        .join(
             Autoridad,
         )
     )
