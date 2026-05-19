@@ -6,7 +6,7 @@ from typing import Annotated
 
 from rich.console import Console
 from rich.table import Table
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from typer import Exit, Option, Typer
 
 from pjecz_hercules_cli_typer.config.settings import get_settings
@@ -75,7 +75,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, lim
 
 
 @app.command()
-def insert(
+def add(
     autoridad_clave: str = "",
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
@@ -100,17 +100,18 @@ def insert(
     # Si viene la autoridad_clave, consultarla
     autoridad = None
     if autoridad_clave != "":
-        stmt = select(Autoridad.clave).where(Autoridad.clave == safe_clave(autoridad_clave))
+        stmt = select(Autoridad.id, Autoridad.clave).where(Autoridad.clave == safe_clave(autoridad_clave))
         autoridad = db.execute(stmt).first()
         if autoridad is None:
             console.print("[red]Clave de autoridad inválida[/red]")
             raise Exit(code=1)
 
-    # Si no viene la autoridad_clave, rastrear todas las digitalizaciones
-    if autoridad is None:
-        prefix = "cjc/"
-    else:
-        prefix = f"cjc/{autoridad.clave}/"
+    # Si viene la autoridad_clave, rastrear solo esa, de lo contrario todas las digitalizaciones
+    prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/"
+    title = "Digitalizaciones que se pueden insertar (todas las autoridades)"
+    if autoridad:
+        prefix = f"{prefix}{autoridad.clave.lower()}/"
+        title = f"Digitalizaciones que se pueden insertar (autoridad: {autoridad.clave})"
 
     # Rastrear archivos en el bucket de GCS
     try:
@@ -119,41 +120,90 @@ def insert(
         console.print(f"[red]Error al obtener los archivos del bucket de GCS: {error}[/red]")
         raise Exit(code=1)
 
-    # Si save es False, mostrar los archivos que se podrían insertar
-    if not save:
-        tabla = Table(title="Digitalizaciones que se pueden insertar")
-        tabla.add_column("Autoridad clave")
-        tabla.add_column("Expediente")
-        tabla.add_column("Descripción")
-        for blob in blobs:
-            # Se espera que cada blob sea CLAVE/AAAA/NNNN-AAAA-...pdf, donde...
-            # - CLAVE es la clave de la autoridad,
-            # - NNNN es el número en cuatro dígitos del expediente,
-            # - AAAA es el año en cuatro dígitos del expediente,
-            # - y el resto es la descripción
-            try:
-                if blob.name is None:
-                    console.print(f"[yellow]Archivo sin nombre: {blob}[/yellow]")
-                    continue
-                parts = blob.name.split("/")
-                if len(parts) < 3:
-                    console.print(f"[yellow]Archivo con formato no válido: {blob}[/yellow]")
-                    continue
-                autoridad_clave = parts[0]
-                expediente_part = parts[2].split(".")[0]  # Obtener la parte del nombre sin la extensión
-                expediente_parts = expediente_part.split("-")
-                if len(expediente_parts) < 2:
-                    console.print(f"[yellow]Archivo con formato de expediente no válido: {blob.name}[/yellow]")
-                    continue
-                expediente_numero = expediente_parts[0]
-                expediente_anio = expediente_parts[1]
-                descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
-                tabla.add_row(autoridad_clave, f"{expediente_numero}-{expediente_anio}", descripcion)
-            except Exception as error:
-                console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
+    # Inicializar la tabla
+    tabla = Table(title=title)
+    tabla.add_column("Autoridad clave")
+    tabla.add_column("Expediente")
+    tabla.add_column("Descripción")
 
-        console.print(tabla)
-        return
+    # Procesar los archivos encontrados
+    clave = ""  # Para consultar la clave de la autoridad si cambia
+    for blob in blobs:
+        if blob.name is None:
+            console.print(f"[yellow]Archivo sin nombre: {blob}[/yellow]")
+            continue
 
-    # TODO: Insertar las digitalizaciones nuevas en la base de datos
-    console.print("[yellow]Funcionalidad de inserción no implementada aún[/yellow]")
+        # Se espera que cada blob sea CLAVE/AAAA/NNNNN-AAAA-...pdf, donde...
+        # - CLAVE es la clave de la autoridad,
+        # - NNNNN es el número en cinco dígitos del expediente,
+        # - AAAA es el año en cuatro dígitos del expediente,
+        # - y el resto es la descripción
+        try:
+            # Separar las partes de derecha a izquierda /AUTORIDAD_DIR/ANIO/ARCHIVO
+            parts = blob.name.split("/")
+            archivo_part = parts[-1]
+            anio_part = parts[-2]
+            autoridad_dir = parts[-3]
+            # Separar las partes del nombre del archivo NNNNN-YYYY-DESC.pdf
+            archivo_nombre = archivo_part.split(".")[0]  # Obtener la parte del nombre sin la extensión
+            expediente_parts = archivo_nombre.split("-")
+            expediente_num = expediente_parts[0]
+            expediente_anio = int(expediente_parts[1])  # TODO: posible error al convertir a entero
+        except IndexError as error:
+            console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
+
+        # Definir la descripcion
+        descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
+
+        # TODO: Consultar la autoridad
+        if autoridad_clave == "":
+            clave = autoridad_dir.upper()
+            stmt = select(Autoridad).where(Autoridad.clave == clave)
+            autoridad = db.execute(stmt).first()
+            if autoridad is None:
+                console.print(f"[yellow]Se omite el archivo {blob.name} porque no existe la autoridad {clave}[/yellow]")
+                continue
+
+        # Consultar en la base de datos la existencia
+        stmt = (
+            select(
+                VspDigitalizacion.id,
+            )
+            .join(
+                Autoridad,
+            )
+            .where(
+                Autoridad.clave == autoridad_clave,
+                VspDigitalizacion.expediente_anio == expediente_anio,
+                VspDigitalizacion.expediente_num == expediente_num,
+                VspDigitalizacion.descripcion == descripcion,
+            )
+        )
+        posible_vsp_digitalizacion = db.execute(stmt).first()
+
+        # Si YA existe, se omite
+        if posible_vsp_digitalizacion:
+            continue
+
+        # Insertar
+        if save:
+            stmt = insert(VspDigitalizacion).values(
+                autoridad_id=autoridad.id,
+                expediente=f"{expediente_num}/{expediente_anio}",
+                expediente_anio=expediente_anio,
+                expediente_num=expediente_num,
+                descripcion=descripcion,
+                observaciones=None,
+                archivo=blob.name,
+                url=blob.public_url,
+                tamano=None,
+                tiempo=None,
+            )
+            db.execute(stmt)
+
+        # Agregar el reglón a la tabla
+        tabla.add_row(autoridad_clave, f"{expediente_num}/{expediente_anio}", descripcion)
+
+    # Mostrar tabla
+    console.print(tabla)
+    return
