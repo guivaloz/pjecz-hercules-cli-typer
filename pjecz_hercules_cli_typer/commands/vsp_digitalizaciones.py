@@ -155,14 +155,15 @@ def add(
         # Definir la descripcion
         descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
 
-        # TODO: Consultar la autoridad
-        if autoridad_clave == "":
-            clave = autoridad_dir.upper()
+        # Consultar la autoridad
+        clave = autoridad_dir.upper()
+        if autoridad is None or autoridad_clave == "" or autoridad_clave != clave:
             stmt = select(Autoridad).where(Autoridad.clave == clave)
             autoridad = db.execute(stmt).first()
             if autoridad is None:
                 console.print(f"[yellow]Se omite el archivo {blob.name} porque no existe la autoridad {clave}[/yellow]")
                 continue
+            clave = autoridad.clave
 
         # Consultar en la base de datos la existencia
         stmt = (
