@@ -220,3 +220,6 @@ __marimo__/
 *.jpeg
 *.png
 *.gif
+
+# Bash scripts
+.bashrc
