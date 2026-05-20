@@ -108,11 +108,12 @@ def add(
             raise Exit(code=1)
 
     # Si viene la autoridad_clave, rastrear solo esa, de lo contrario todas las digitalizaciones
-    prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/"
+    prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/" if settings.DIRECTORIO_VSP_DIGITALIZACIONES != "" else ""
     title = "Digitalizaciones que se pueden insertar (todas las autoridades)"
     if autoridad:
         prefix = f"{prefix}{autoridad.clave.lower()}/"
         title = f"Digitalizaciones que se pueden insertar (autoridad: {autoridad.clave})"
+    console.print(f"Rastreando archivos en el bucket de GCS con prefijo [cyan]{prefix}[/cyan]...")
 
     # Rastrear archivos en el bucket de GCS
     try:
@@ -120,6 +121,11 @@ def add(
     except Exception as error:
         console.print(f"[red]Error al obtener los archivos del bucket de GCS: {error}[/red]")
         raise Exit(code=1)
+
+    # Si no se encontraron archivos, salir
+    if not blobs:
+        console.print("[yellow]No se encontraron archivos en el bucket de GCS[/yellow]")
+        return
 
     # Inicializar la tabla
     tabla = Table(title=title)
@@ -149,17 +155,28 @@ def add(
             archivo_nombre = archivo_part.split(".")[0]  # Obtener la parte del nombre sin la extensión
             expediente_parts = archivo_nombre.split("-")
             expediente_num = expediente_parts[0]
-            expediente_anio = int(expediente_parts[1])  # TODO: posible error al convertir a entero
-        except IndexError as error:
+            expediente_anio = expediente_parts[1]
+            descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
+        except (IndexError, ValueError) as error:
             console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
+            continue
 
-        # Definir la descripcion
-        descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
+        # Validar que expediente_num sea un número de cinco dígitos y convertir a entero
+        if not expediente_num.isdigit() or len(expediente_num) != 5:
+            console.print(f"[yellow]Número de expediente inválido en el archivo {blob.name}[/yellow]")
+            continue
+        expediente_num = int(expediente_num)
+
+        # Validar que expediente_anio sea un número de cuatro dígitos y convertir a entero
+        if not expediente_anio.isdigit() or len(expediente_anio) != 4:
+            console.print(f"[yellow]Año de expediente inválido en el archivo {blob.name}[/yellow]")
+            continue
+        expediente_anio = int(expediente_anio)
 
         # Consultar la autoridad
         clave = autoridad_dir.upper()
         if autoridad is None or autoridad_clave == "" or autoridad_clave != clave:
-            stmt = select(Autoridad).where(Autoridad.clave == clave)
+            stmt = select(Autoridad.id, Autoridad.clave).where(Autoridad.clave == clave)
             autoridad = db.execute(stmt).first()
             if autoridad is None:
                 console.print(f"[yellow]Se omite el archivo {blob.name} porque no existe la autoridad {clave}[/yellow]")
