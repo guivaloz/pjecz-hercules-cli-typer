@@ -2,6 +2,7 @@
 VASPEC Digitalizaciones command
 """
 
+import subprocess
 from typing import Annotated
 
 from rich.console import Console
@@ -208,3 +209,26 @@ def add(
     # Mostrar tabla
     console.print(tabla)
     return
+
+
+@app.command()
+def copy():
+    """Copiar archivos del bucket pjecz-cetus al bucket pjecz-aquarius con rclone"""
+    console = Console()
+
+    copies = [
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1-mer"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2-mer"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j3-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j3-mer"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1l-civ"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2l-civ"),
+    ]
+
+    for origen, destino in copies:
+        console.print(f"Copiando [cyan]{origen}[/cyan] -> [green]{destino}[/green]")
+        result = subprocess.run(["rclone", "--progress", "copy", origen, destino])
+        if result.returncode != 0:
+            console.print(f"[red]Error al copiar {origen} (código {result.returncode})[/red]")
+            raise Exit(code=result.returncode)
+
+    console.print("[bold green]Copia completada.[/bold green]")
