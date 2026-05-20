@@ -101,8 +101,8 @@ def add(
     # Si viene la autoridad_clave, consultarla
     autoridad = None
     if autoridad_clave != "":
-        stmt = select(Autoridad.id, Autoridad.clave).where(Autoridad.clave == safe_clave(autoridad_clave))
-        autoridad = db.execute(stmt).first()
+        stmt = select(Autoridad).where(Autoridad.clave == safe_clave(autoridad_clave))
+        autoridad = db.execute(stmt).scalar_one_or_none()
         if autoridad is None:
             console.print("[red]Clave de autoridad inválida[/red]")
             raise Exit(code=1)
@@ -134,6 +134,7 @@ def add(
     tabla.add_column("Descripción")
 
     # Procesar los archivos encontrados
+    contador = 0
     clave = ""  # Para consultar la clave de la autoridad si cambia
     for blob in blobs:
         if blob.name is None:
@@ -176,8 +177,8 @@ def add(
         # Consultar la autoridad
         clave = autoridad_dir.upper()
         if autoridad is None or autoridad_clave == "" or autoridad_clave != clave:
-            stmt = select(Autoridad.id, Autoridad.clave).where(Autoridad.clave == clave)
-            autoridad = db.execute(stmt).first()
+            stmt = select(Autoridad).where(Autoridad.clave == clave)
+            autoridad = db.execute(stmt).scalar_one_or_none()
             if autoridad is None:
                 console.print(f"[yellow]Se omite el archivo {blob.name} porque no existe la autoridad {clave}[/yellow]")
                 continue
@@ -192,7 +193,7 @@ def add(
                 Autoridad,
             )
             .where(
-                Autoridad.clave == autoridad_clave,
+                Autoridad.id == autoridad.id,
                 VspDigitalizacion.expediente_anio == expediente_anio,
                 VspDigitalizacion.expediente_num == expediente_num,
                 VspDigitalizacion.descripcion == descripcion,
@@ -206,7 +207,7 @@ def add(
 
         # Insertar
         if save:
-            stmt = insert(VspDigitalizacion).values(
+            vsp_digitalizacion = VspDigitalizacion(
                 autoridad_id=autoridad.id,
                 expediente=f"{expediente_num}/{expediente_anio}",
                 expediente_anio=expediente_anio,
@@ -215,17 +216,22 @@ def add(
                 observaciones=None,
                 archivo=blob.name,
                 url=blob.public_url,
-                tamano=None,
-                tiempo=None,
+                tamano=blob.size,
+                tiempo=blob.updated,
             )
-            db.execute(stmt)
+            db.add(vsp_digitalizacion)
+            db.commit()
+            contador += 1
 
         # Agregar el reglón a la tabla
-        tabla.add_row(autoridad_clave, f"{expediente_num}/{expediente_anio}", descripcion)
+        tabla.add_row(clave, f"{expediente_num}/{expediente_anio}", descripcion)
 
     # Mostrar tabla
     console.print(tabla)
-    return
+
+    # Mostrar el contador de inserciones
+    if save:
+        console.print(f"[bold green]Se insertaron {contador} digitalizaciones en la base de datos.[/bold green]")
 
 
 @app.command()
