@@ -2,6 +2,7 @@
 VASPEC Digitalizaciones command
 """
 
+import subprocess
 from typing import Annotated
 
 from rich.console import Console
@@ -100,18 +101,19 @@ def add(
     # Si viene la autoridad_clave, consultarla
     autoridad = None
     if autoridad_clave != "":
-        stmt = select(Autoridad.id, Autoridad.clave).where(Autoridad.clave == safe_clave(autoridad_clave))
-        autoridad = db.execute(stmt).first()
+        stmt = select(Autoridad).where(Autoridad.clave == safe_clave(autoridad_clave))
+        autoridad = db.execute(stmt).scalar_one_or_none()
         if autoridad is None:
             console.print("[red]Clave de autoridad inválida[/red]")
             raise Exit(code=1)
 
     # Si viene la autoridad_clave, rastrear solo esa, de lo contrario todas las digitalizaciones
-    prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/"
+    prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/" if settings.DIRECTORIO_VSP_DIGITALIZACIONES != "" else ""
     title = "Digitalizaciones que se pueden insertar (todas las autoridades)"
     if autoridad:
         prefix = f"{prefix}{autoridad.clave.lower()}/"
         title = f"Digitalizaciones que se pueden insertar (autoridad: {autoridad.clave})"
+    console.print(f"Rastreando archivos en el bucket de GCS con prefijo [cyan]{prefix}[/cyan]...")
 
     # Rastrear archivos en el bucket de GCS
     try:
@@ -120,6 +122,11 @@ def add(
         console.print(f"[red]Error al obtener los archivos del bucket de GCS: {error}[/red]")
         raise Exit(code=1)
 
+    # Si no se encontraron archivos, salir
+    if not blobs:
+        console.print("[yellow]No se encontraron archivos en el bucket de GCS[/yellow]")
+        return
+
     # Inicializar la tabla
     tabla = Table(title=title)
     tabla.add_column("Autoridad clave")
@@ -127,6 +134,7 @@ def add(
     tabla.add_column("Descripción")
 
     # Procesar los archivos encontrados
+    contador = 0
     clave = ""  # Para consultar la clave de la autoridad si cambia
     for blob in blobs:
         if blob.name is None:
@@ -148,18 +156,29 @@ def add(
             archivo_nombre = archivo_part.split(".")[0]  # Obtener la parte del nombre sin la extensión
             expediente_parts = archivo_nombre.split("-")
             expediente_num = expediente_parts[0]
-            expediente_anio = int(expediente_parts[1])  # TODO: posible error al convertir a entero
-        except IndexError as error:
+            expediente_anio = expediente_parts[1]
+            descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
+        except (IndexError, ValueError) as error:
             console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
+            continue
 
-        # Definir la descripcion
-        descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
+        # Validar que expediente_num sea un número de cinco dígitos y convertir a entero
+        if not expediente_num.isdigit() or len(expediente_num) != 5:
+            console.print(f"[yellow]Número de expediente inválido en el archivo {blob.name}[/yellow]")
+            continue
+        expediente_num = int(expediente_num)
+
+        # Validar que expediente_anio sea un número de cuatro dígitos y convertir a entero
+        if not expediente_anio.isdigit() or len(expediente_anio) != 4:
+            console.print(f"[yellow]Año de expediente inválido en el archivo {blob.name}[/yellow]")
+            continue
+        expediente_anio = int(expediente_anio)
 
         # Consultar la autoridad
         clave = autoridad_dir.upper()
         if autoridad is None or autoridad_clave == "" or autoridad_clave != clave:
             stmt = select(Autoridad).where(Autoridad.clave == clave)
-            autoridad = db.execute(stmt).first()
+            autoridad = db.execute(stmt).scalar_one_or_none()
             if autoridad is None:
                 console.print(f"[yellow]Se omite el archivo {blob.name} porque no existe la autoridad {clave}[/yellow]")
                 continue
@@ -174,7 +193,7 @@ def add(
                 Autoridad,
             )
             .where(
-                Autoridad.clave == autoridad_clave,
+                Autoridad.id == autoridad.id,
                 VspDigitalizacion.expediente_anio == expediente_anio,
                 VspDigitalizacion.expediente_num == expediente_num,
                 VspDigitalizacion.descripcion == descripcion,
@@ -188,7 +207,7 @@ def add(
 
         # Insertar
         if save:
-            stmt = insert(VspDigitalizacion).values(
+            vsp_digitalizacion = VspDigitalizacion(
                 autoridad_id=autoridad.id,
                 expediente=f"{expediente_num}/{expediente_anio}",
                 expediente_anio=expediente_anio,
@@ -197,14 +216,42 @@ def add(
                 observaciones=None,
                 archivo=blob.name,
                 url=blob.public_url,
-                tamano=None,
-                tiempo=None,
+                tamano=blob.size,
+                tiempo=blob.updated,
             )
-            db.execute(stmt)
+            db.add(vsp_digitalizacion)
+            db.commit()
+            contador += 1
 
         # Agregar el reglón a la tabla
-        tabla.add_row(autoridad_clave, f"{expediente_num}/{expediente_anio}", descripcion)
+        tabla.add_row(clave, f"{expediente_num}/{expediente_anio}", descripcion)
 
     # Mostrar tabla
     console.print(tabla)
-    return
+
+    # Mostrar el contador de inserciones
+    if save:
+        console.print(f"[bold green]Se insertaron {contador} digitalizaciones en la base de datos.[/bold green]")
+
+
+@app.command()
+def copy():
+    """Copiar archivos del bucket pjecz-cetus al bucket pjecz-aquarius con rclone"""
+    console = Console()
+
+    copies = [
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1-mer"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2-mer"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j3-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j3-mer"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1l-civ"),
+        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2l-civ"),
+    ]
+
+    for origen, destino in copies:
+        console.print(f"Copiando [cyan]{origen}[/cyan] -> [green]{destino}[/green]")
+        result = subprocess.run(["rclone", "--progress", "copy", origen, destino])
+        if result.returncode != 0:
+            console.print(f"[red]Error al copiar {origen} (código {result.returncode})[/red]")
+            raise Exit(code=result.returncode)
+
+    console.print("[bold green]Copia completada.[/bold green]")
