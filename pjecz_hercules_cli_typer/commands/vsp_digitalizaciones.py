@@ -7,14 +7,14 @@ from typing import Annotated
 
 from rich.console import Console
 from rich.table import Table
-from sqlalchemy import insert, select
+from sqlalchemy import select
 from typer import Exit, Option, Typer
 
 from pjecz_hercules_cli_typer.config.settings import get_settings
 from pjecz_hercules_cli_typer.models.autoridades import Autoridad
 from pjecz_hercules_cli_typer.models.vsp_digitalizaciones import VspDigitalizacion
 from pjecz_hercules_cli_typer.utils.database import get_database
-from pjecz_hercules_cli_typer.utils.google_cloud_storage import get_blobs_from_gcs
+from pjecz_hercules_cli_typer.utils.google_cloud_storage import get_blobs_from_gcs, update_blob_name_in_gcs
 from pjecz_hercules_cli_typer.utils.safe_string import safe_clave, safe_string
 
 app = Typer(help="VASPEC Digitalizaciones")
@@ -26,7 +26,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, lim
     console = Console()
     console.print("Consultando digitalizaciones...")
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Preparar consulta base
@@ -90,12 +90,12 @@ def add(
     # Obtener configuración
     settings = get_settings()
 
-    # Validar que se haya configurado el depósito de digitaliaciones
+    # Validar que se haya configurado el depósito
     if settings.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES == "":
-        console.print("[red]No se ha configurado el depósito de edictos[/red]")
+        console.print("[red]No se ha configurado el depósito[/red]")
         raise Exit(code=1)
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Si viene la autoridad_clave, consultarla
@@ -108,7 +108,9 @@ def add(
             raise Exit(code=1)
 
     # Si viene la autoridad_clave, rastrear solo esa, de lo contrario todas las digitalizaciones
-    prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/" if settings.DIRECTORIO_VSP_DIGITALIZACIONES != "" else ""
+    prefix = ""
+    if settings.DIRECTORIO_VSP_DIGITALIZACIONES != "":
+        prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/"
     title = "Digitalizaciones que se pueden insertar (todas las autoridades)"
     if autoridad:
         prefix = f"{prefix}{autoridad.clave.lower()}/"
@@ -139,6 +141,17 @@ def add(
     for blob in blobs:
         if blob.name is None:
             console.print(f"[yellow]Archivo sin nombre: {blob}[/yellow]")
+            continue
+
+        # Si el nombre del archivo es UUID.pdf, se omite
+        try:
+            parts = blob.name.split("/")
+            archivo_part = parts[-1]
+            archivo_nombre = archivo_part.split(".")[0]  # Obtener la parte del nombre sin la extensión
+            if len(archivo_nombre) == 36:  # Longitud de un UUID
+                continue
+        except (IndexError, ValueError) as error:
+            console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
             continue
 
         # Se espera que cada blob sea CLAVE/AAAA/NNNNN-AAAA-...pdf, donde...
@@ -235,23 +248,230 @@ def add(
 
 
 @app.command()
-def copy():
+def copy(
+    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+):
     """Copiar archivos del bucket pjecz-cetus al bucket pjecz-aquarius con rclone"""
     console = Console()
+    if save:
+        console.print("Ejecutando los comandos para copiar entre buckets...")
+    else:
+        console.print("Mostrando los comandos para copiar entre buckets...")
 
-    copies = [
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1-mer"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2-mer"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j3-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j3-mer"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1l-civ"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2l-civ"),
-    ]
+    # Inicializar la base de datos
+    db = get_database()
 
-    for origen, destino in copies:
+    # Consultar las autoridades donde es_vsp_digitalizaciones es True
+    stmt = select(Autoridad.clave).where(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave)
+    autoridades = db.execute(stmt).all()
+    if autoridades is None:
+        console.print("[yellow]No se encontraron autoridades con digitalizaciones[/yellow]")
+        return
+
+    # Inicializar listado con las copias a realizar, cada elemento es una tupla (origen, destino)
+    copias = []
+    for autoridad in autoridades:
+        copias.append(
+            (
+                f"googlestoragevaspec:/pjecz-cetus/cjc/{autoridad.clave.lower()}",
+                f"googlestoragejusticiadigital:/pjecz-aquarius/{autoridad.clave.lower()}",
+            )
+        )
+
+    for origen, destino in copias:
         console.print(f"Copiando [cyan]{origen}[/cyan] -> [green]{destino}[/green]")
-        result = subprocess.run(["rclone", "--progress", "copy", origen, destino])
-        if result.returncode != 0:
-            console.print(f"[red]Error al copiar {origen} (código {result.returncode})[/red]")
-            raise Exit(code=result.returncode)
+        if save:
+            result = subprocess.run(["rclone", "--progress", "copy", origen, destino])
+            if result.returncode != 0:
+                console.print(f"[red]Error al copiar {origen} (código {result.returncode})[/red]")
+                raise Exit(code=result.returncode)
 
-    console.print("[bold green]Copia completada.[/bold green]")
+    if save:
+        console.print("[bold green]Copia completada.[/bold green]")
+
+
+@app.command()
+def rename(
+    autoridad_clave: str = "",
+    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+):
+    """Renombrar los archivos en el bucket pjecz-aquarius a UUID.pdf y actualizar la base de datos"""
+    console = Console()
+    if save:
+        console.print("Renombrando los archivos a UUID.pdf...")
+    else:
+        console.print("Mostrando los archivos que se pueden renombrar...")
+
+    # Obtener configuración
+    settings = get_settings()
+
+    # Validar que se haya configurado el depósito
+    if settings.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES == "":
+        console.print("[red]No se ha configurado el depósito[/red]")
+        raise Exit(code=1)
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Si viene la autoridad_clave, consultarla
+    autoridad = None
+    if autoridad_clave != "":
+        stmt = select(Autoridad).where(Autoridad.clave == safe_clave(autoridad_clave))
+        autoridad = db.execute(stmt).scalar_one_or_none()
+        if autoridad is None:
+            console.print("[red]Clave de autoridad inválida[/red]")
+            raise Exit(code=1)
+
+    # Si viene la autoridad_clave, rastrear solo esa, de lo contrario todas las digitalizaciones
+    prefix = ""
+    if settings.DIRECTORIO_VSP_DIGITALIZACIONES != "":
+        prefix = f"{settings.DIRECTORIO_VSP_DIGITALIZACIONES}/"
+    title = "Digitalizaciones que se pueden renombrar (todas las autoridades)"
+    if autoridad:
+        prefix = f"{prefix}{autoridad.clave.lower()}/"
+        title = f"Digitalizaciones que se pueden renombrar (autoridad: {autoridad.clave})"
+    console.print(f"Rastreando archivos en el bucket de GCS con prefijo [cyan]{prefix}[/cyan]...")
+
+    # Rastrear archivos en el bucket de GCS
+    try:
+        blobs = get_blobs_from_gcs(settings.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES, prefix)
+    except Exception as error:
+        console.print(f"[red]Error al obtener los archivos del bucket de GCS: {error}[/red]")
+        raise Exit(code=1)
+
+    # Si no se encontraron archivos, salir
+    if not blobs:
+        console.print("[yellow]No se encontraron archivos en el bucket de GCS[/yellow]")
+        return
+
+    # Inicializar la tabla
+    tabla = Table(title=title)
+    tabla.add_column("Autoridad clave")
+    tabla.add_column("Expediente")
+    tabla.add_column("Descripción")
+    tabla.add_column("Archivo original")
+    tabla.add_column("Archivo renombrado")
+
+    # Procesar los archivos encontrados
+    contador = 0
+    clave = ""  # Para consultar la clave de la autoridad si cambia
+    for blob in blobs:
+        if blob.name is None:
+            console.print(f"[yellow]Archivo sin nombre: {blob}[/yellow]")
+            continue
+
+        # Si el nombre del archivo es UUID.pdf, se omite
+        try:
+            parts = blob.name.split("/")
+            archivo_part = parts[-1]
+            archivo_nombre = archivo_part.split(".")[0]  # Obtener la parte del nombre sin la extensión
+            if len(archivo_nombre) == 36:  # Longitud de un UUID
+                continue
+        except (IndexError, ValueError) as error:
+            console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
+            continue
+
+        # Se espera que cada blob sea CLAVE/AAAA/NNNNN-AAAA-...pdf, donde...
+        # - CLAVE es la clave de la autoridad,
+        # - NNNNN es el número en cinco dígitos del expediente,
+        # - AAAA es el año en cuatro dígitos del expediente,
+        # - y el resto es la descripción
+        try:
+            # Separar las partes de derecha a izquierda /AUTORIDAD_DIR/ANIO/ARCHIVO
+            parts = blob.name.split("/")
+            archivo_part = parts[-1]
+            anio_part = parts[-2]
+            autoridad_dir = parts[-3]
+            # Separar las partes del nombre del archivo NNNNN-YYYY-DESC.pdf
+            archivo_nombre = archivo_part.split(".")[0]  # Obtener la parte del nombre sin la extensión
+            expediente_parts = archivo_nombre.split("-")
+            expediente_num = expediente_parts[0]
+            expediente_anio = expediente_parts[1]
+            descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
+        except (IndexError, ValueError) as error:
+            console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
+            continue
+
+        # Validar que expediente_num sea un número de cinco dígitos y convertir a entero
+        if not expediente_num.isdigit() or len(expediente_num) != 5:
+            console.print(f"[yellow]Número de expediente inválido en el archivo {blob.name}[/yellow]")
+            continue
+        expediente_num = int(expediente_num)
+
+        # Validar que expediente_anio sea un número de cuatro dígitos y convertir a entero
+        if not expediente_anio.isdigit() or len(expediente_anio) != 4:
+            console.print(f"[yellow]Año de expediente inválido en el archivo {blob.name}[/yellow]")
+            continue
+        expediente_anio = int(expediente_anio)
+
+        # Consultar la autoridad
+        clave = autoridad_dir.upper()
+        if autoridad is None or autoridad_clave == "" or autoridad_clave != clave:
+            stmt = select(Autoridad).where(Autoridad.clave == clave)
+            autoridad = db.execute(stmt).scalar_one_or_none()
+            if autoridad is None:
+                console.print(f"[yellow]Se omite el archivo {blob.name} porque no existe la autoridad {clave}[/yellow]")
+                continue
+            clave = autoridad.clave
+
+        # Consultar en la base de datos la existencia
+        stmt = (
+            select(
+                VspDigitalizacion.id,
+                VspDigitalizacion.archivo_uuid,
+            )
+            .join(
+                Autoridad,
+            )
+            .where(
+                Autoridad.id == autoridad.id,
+                VspDigitalizacion.expediente_anio == expediente_anio,
+                VspDigitalizacion.expediente_num == expediente_num,
+                VspDigitalizacion.descripcion == descripcion,
+            )
+        )
+        vsp_digitalizacion = db.execute(stmt).first()
+
+        # Si NO existe, se omite
+        if not vsp_digitalizacion:
+            continue
+
+        # Tomar el nombre original del archivo
+        original_nombre = blob.name
+
+        # Definir el nuevo nombre del archivo a UUID.pdf
+        nuevo_nombre = f"{clave}/{anio_part}/{str(vsp_digitalizacion.archivo_uuid)}.pdf"
+
+        # Renombrar archivo en el bucket y actualizar la base de datos
+        if save:
+            try:
+                nuevo_url_publico = update_blob_name_in_gcs(
+                    settings.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES,
+                    original_nombre,
+                    nuevo_nombre,
+                )
+                contador += 1
+            except Exception as error:
+                console.print(f"[red]Error al renombrar el archivo {original_nombre}: {error}[/red]")
+                continue
+            # Actualizar la base de datos
+            vsp_digitalizacion.archivo = nuevo_nombre
+            vsp_digitalizacion.url = nuevo_url_publico
+            db.add(vsp_digitalizacion)
+            db.commit()
+
+        # Agregar el reglón a la tabla
+        tabla.add_row(
+            clave,
+            f"{expediente_num}/{expediente_anio}",
+            descripcion,
+            original_nombre,
+            nuevo_nombre,
+        )
+
+    # Mostrar tabla
+    console.print(tabla)
+
+    # Mostrar el contador de inserciones
+    if save:
+        console.print(f"[bold green]Se renombraron {contador} digitalizaciones en la base de datos.[/bold green]")
