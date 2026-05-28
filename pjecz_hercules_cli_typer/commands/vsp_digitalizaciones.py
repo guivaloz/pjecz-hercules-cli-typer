@@ -404,40 +404,36 @@ def rename(
             continue
         expediente_anio = int(expediente_anio)
 
+        # Tomar el nombre original del archivo
+        original_nombre = blob.name
+
         # Consultar la autoridad
         clave = autoridad_dir.upper()
         if autoridad is None or autoridad_clave == "" or autoridad_clave != clave:
             stmt = select(Autoridad).where(Autoridad.clave == clave)
             autoridad = db.execute(stmt).scalar_one_or_none()
             if autoridad is None:
-                console.print(f"[yellow]Se omite el archivo {blob.name} porque no existe la autoridad {clave}[/yellow]")
+                console.print(f"[yellow]Se omite el archivo {original_nombre} porque no existe la autoridad {clave}[/yellow]")
                 continue
             clave = autoridad.clave
 
-        # Consultar en la base de datos la existencia
-        stmt = (
-            select(
-                VspDigitalizacion.id,
-                VspDigitalizacion.archivo_uuid,
-            )
-            .join(
-                Autoridad,
-            )
-            .where(
+        # Consultar en la base de datos la existencia, por método ORM para obtener el objeto y actualizarlo después
+        vsp_digitalizacion = (
+            db.query(VspDigitalizacion)
+            .join(Autoridad)
+            .filter(
                 Autoridad.id == autoridad.id,
                 VspDigitalizacion.expediente_anio == expediente_anio,
                 VspDigitalizacion.expediente_num == expediente_num,
                 VspDigitalizacion.descripcion == descripcion,
             )
+            .first()
         )
-        vsp_digitalizacion = db.execute(stmt).first()
 
         # Si NO existe, se omite
         if not vsp_digitalizacion:
+            console.print(f"[yellow]Se omite el archivo {original_nombre} porque no existe en la base de datos[/yellow]")
             continue
-
-        # Tomar el nombre original del archivo
-        original_nombre = blob.name
 
         # Definir el nuevo nombre del archivo a UUID.pdf
         nuevo_nombre = f"{clave}/{anio_part}/{str(vsp_digitalizacion.archivo_uuid)}.pdf"
