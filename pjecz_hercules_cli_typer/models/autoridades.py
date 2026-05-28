@@ -41,6 +41,7 @@ class Autoridad(Base):
     es_notaria: Mapped[bool] = mapped_column(default=False)
     es_organo_especializado: Mapped[bool] = mapped_column(default=False)
     es_revisor_escrituras: Mapped[bool] = mapped_column(default=False)
+    es_vsp_digitalizaciones: Mapped[bool] = mapped_column(default=False)
 
     # Hijos
     edictos: Mapped[List["Edicto"]] = relationship("Edicto", back_populates="autoridad")

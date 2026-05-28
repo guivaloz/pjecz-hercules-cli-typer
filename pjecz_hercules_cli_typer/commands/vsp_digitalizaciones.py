@@ -255,3 +255,10 @@ def copy():
             raise Exit(code=result.returncode)
 
     console.print("[bold green]Copia completada.[/bold green]")
+
+
+@app.command()
+def analyse():
+    """Analizar archivos del bucket pjecz-aquarius para obtener información"""
+    console = Console()
+    console.print("[bold green]Análisis completado.[/bold green]")
