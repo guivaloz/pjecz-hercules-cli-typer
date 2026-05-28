@@ -26,7 +26,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, lim
     console = Console()
     console.print("Consultando digitalizaciones...")
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Preparar consulta base
@@ -95,7 +95,7 @@ def add(
         console.print("[red]No se ha configurado el depósito de edictos[/red]")
         raise Exit(code=1)
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Si viene la autoridad_clave, consultarla
@@ -235,30 +235,43 @@ def add(
 
 
 @app.command()
-def copy():
+def copy(
+    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+):
     """Copiar archivos del bucket pjecz-cetus al bucket pjecz-aquarius con rclone"""
     console = Console()
+    if save:
+        console.print("Ejecutando los comandos para copiar entre buckets...")
+    else:
+        console.print("Mostrando los comandos para copiar entre buckets...")
 
-    copies = [
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1-mer"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2-mer"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j3-mer", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j3-mer"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j1l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j1l-civ"),
-        ("googlestoragevaspec:/pjecz-cetus/cjc/slt-j2l-civ", "googlestoragejusticiadigital:/pjecz-aquarius/slt-j2l-civ"),
-    ]
+    # Inicializar la base de datos
+    db = get_database()
 
-    for origen, destino in copies:
+    # Consultar las autoridades donde es_vsp_digitalizaciones es True
+    stmt = select(Autoridad.clave).where(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave)
+    autoridades = db.execute(stmt).all()
+    if autoridades is None:
+        console.print("[yellow]No se encontraron autoridades con digitalizaciones[/yellow]")
+        return
+
+    # Inicializar listado con las copias a realizar, cada elemento es una tupla (origen, destino)
+    copias = []
+    for autoridad in autoridades:
+        copias.append(
+            (
+                f"googlestoragevaspec:/pjecz-cetus/cjc/{autoridad.clave.lower()}",
+                f"googlestoragejusticiadigital:/pjecz-aquarius/{autoridad.clave.lower()}",
+            )
+        )
+
+    for origen, destino in copias:
         console.print(f"Copiando [cyan]{origen}[/cyan] -> [green]{destino}[/green]")
-        result = subprocess.run(["rclone", "--progress", "copy", origen, destino])
-        if result.returncode != 0:
-            console.print(f"[red]Error al copiar {origen} (código {result.returncode})[/red]")
-            raise Exit(code=result.returncode)
+        if save:
+            result = subprocess.run(["rclone", "--progress", "copy", origen, destino])
+            if result.returncode != 0:
+                console.print(f"[red]Error al copiar {origen} (código {result.returncode})[/red]")
+                raise Exit(code=result.returncode)
 
-    console.print("[bold green]Copia completada.[/bold green]")
-
-
-@app.command()
-def analyse():
-    """Analizar archivos del bucket pjecz-aquarius para obtener información"""
-    console = Console()
-    console.print("[bold green]Análisis completado.[/bold green]")
+    if save:
+        console.print("[bold green]Copia completada.[/bold green]")
