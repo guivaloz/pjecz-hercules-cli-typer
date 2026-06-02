@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     DIRECTORIO_VSP_DIGITALIZACIONES: str = ""
     SALT: str = "some_random_salt"
     SQLALCHEMY_DATABASE_URI: str = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    TZ: str = "America/Mexico_City"
 
     class Config:
         """Config"""
