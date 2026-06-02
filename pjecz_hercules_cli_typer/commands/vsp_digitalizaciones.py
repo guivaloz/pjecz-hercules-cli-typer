@@ -2,14 +2,20 @@
 VASPEC Digitalizaciones command
 """
 
+import logging
 import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
+import pytz
+from openpyxl import Workbook
 from rich.console import Console
 from rich.table import Table
 from sqlalchemy import select
 from typer import Exit, Option, Typer
 
+from pjecz_hercules_cli_typer.config import settings
 from pjecz_hercules_cli_typer.config.settings import get_settings
 from pjecz_hercules_cli_typer.models.autoridades import Autoridad
 from pjecz_hercules_cli_typer.models.vsp_digitalizaciones import VspDigitalizacion
@@ -17,62 +23,14 @@ from pjecz_hercules_cli_typer.utils.database import get_database
 from pjecz_hercules_cli_typer.utils.google_cloud_storage import get_blobs_from_gcs, update_blob_name_in_gcs
 from pjecz_hercules_cli_typer.utils.safe_string import safe_clave, safe_string
 
+bitacora = logging.getLogger(__name__)
+bitacora.setLevel(logging.INFO)
+formato = logging.Formatter("%(asctime)s:%(levelname)s:%(message)s")
+empunadura = logging.FileHandler("logs/vsp-digitalizaciones.log")
+empunadura.setFormatter(formato)
+bitacora.addHandler(empunadura)
+
 app = Typer(help="VASPEC Digitalizaciones")
-
-
-@app.command()
-def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
-    """Consultar digitalizaciones"""
-    console = Console()
-    console.print("Consultando digitalizaciones...")
-
-    # Inicializar la base de datos
-    db = get_database()
-
-    # Preparar consulta base
-    stmt = select(
-        Autoridad.clave,
-        VspDigitalizacion.expediente,
-        VspDigitalizacion.descripcion,
-        VspDigitalizacion.creado,
-    ).join(
-        Autoridad,
-    )
-
-    # Si viene la autoridad_clave
-    if autoridad_clave != "":
-        autoridad_clave = safe_clave(autoridad_clave)
-        if autoridad_clave == "":
-            console.print("[red]Clave de autoridad inválida[/red]")
-            raise Exit(code=1)
-        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
-
-    # Si viene la descripción
-    if descripcion != "":
-        descripcion = safe_string(descripcion)
-        if descripcion == "":
-            console.print("[red]Descripción inválida[/red]")
-            raise Exit(code=1)
-        stmt = stmt.filter(VspDigitalizacion.descripcion.contains(descripcion))
-
-    # Solo los que tengan estatus A
-    stmt = stmt.filter(VspDigitalizacion.estatus == "A")
-    stmt = stmt.order_by(VspDigitalizacion.descripcion).offset(offset).limit(limit)
-
-    # Mostrar tabla
-    tabla = Table(title="Digitalizaciones")
-    tabla.add_column("Autoridad clave")
-    tabla.add_column("Expediente")
-    tabla.add_column("Descripción")
-    tabla.add_column("Creado")
-    for item in db.execute(stmt):
-        tabla.add_row(
-            item.clave,
-            item.expediente,
-            item.descripcion,
-            item.cleado,
-        )
-    console.print(tabla)
 
 
 @app.command()
@@ -248,6 +206,27 @@ def add(
 
 
 @app.command()
+def check_and_copy(
+    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+):
+    """Obtener los archivos del bucket pjecz-cetus y solo copiar los nuevos al bucket pjecz-aquarius con rclone"""
+    console = Console()
+    if save:
+        console.print("Ejecutando los comandos para revisar y copiar entre buckets...")
+    else:
+        console.print("Mostrando los comandos para revisar y copiar entre buckets...")
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Consultar las autoridades donde es_vsp_digitalizaciones es True
+
+    # Obtener el listado de archivos en el bucket pjecz-cetus para cada autoridad
+
+    # Comparar con los archivos que ya se tienen en la base de datos, solo copiar los que no existan en el bucket pjecz-aquarius
+
+
+@app.command()
 def copy(
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
@@ -288,6 +267,145 @@ def copy(
 
     if save:
         console.print("[bold green]Copia completada.[/bold green]")
+
+
+@app.command()
+def export_to_xlsx(autoridad_clave: str = ""):
+    """Exportar digitalizaciones a un archivo XLSX"""
+    console = Console()
+    console.print("Consultando digitalizaciones...")
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Preparar consulta base
+    stmt = select(
+        Autoridad.clave,
+        VspDigitalizacion.expediente,
+        VspDigitalizacion.expediente_anio,
+        VspDigitalizacion.expediente_num,
+        VspDigitalizacion.descripcion,
+        VspDigitalizacion.archivo,
+        VspDigitalizacion.url,
+    ).join(
+        Autoridad,
+    )
+
+    # Si viene la autoridad_clave
+    if autoridad_clave != "":
+        autoridad_clave = safe_clave(autoridad_clave)
+        if autoridad_clave == "":
+            console.print("[red]Clave de autoridad inválida[/red]")
+            raise Exit(code=1)
+        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
+
+    # Solo los que tengan estatus A
+    stmt = stmt.filter(VspDigitalizacion.estatus == "A")
+
+    # Ordenar por clave de autoridad, año de expediente, número de expediente y descripción
+    stmt = stmt.order_by(
+        Autoridad.clave,
+        VspDigitalizacion.expediente_anio,
+        VspDigitalizacion.expediente_num,
+        VspDigitalizacion.descripcion,
+    )
+
+    # Iniciar el archivo XLSX
+    libro = Workbook()
+    hoja = libro.active
+    if hoja is None:
+        console.print("[red]Error al crear la hoja de Excel[/red]")
+        raise Exit(code=1)
+
+    # Agregar la fila con las cabeceras de las columnas
+    hoja.append(["Autoridad clave", "Expediente", "Año de expediente", "Número de expediente", "Descripción", "Archivo", "URL"])
+
+    # Agregar los datos de las digitalizaciones
+    contador = 0
+    for item in db.execute(stmt):
+        hoja.append(
+            [
+                item.clave,
+                item.expediente,
+                item.expediente_anio,
+                item.expediente_num,
+                item.descripcion,
+                item.archivo,
+                item.url,
+            ]
+        )
+        contador += 1
+
+    # Definir el nombre del archivo XLSX con la fecha y hora actual
+    configuration = get_settings()
+    timezone = pytz.timezone(configuration.TZ)
+    ahora_str = datetime.now(tz=timezone).strftime("%Y-%m-%d-%H%M%S")
+    exportacion = Path("exports", f"vsp_digitalizaciones_{ahora_str}.xlsx")
+
+    # Guardar el archivo XLSX
+    try:
+        libro.save(str(exportacion))
+    except Exception as error:
+        console.print(f"[red]Error al guardar el archivo Excel: {error}[/red]")
+        raise Exit(code=1)
+
+    # Mensaje de éxito
+    console.print(f"[bold green]Se exportaron {contador} filas al archivo {exportacion.name}[/bold green]")
+
+
+@app.command()
+def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
+    """Consultar digitalizaciones"""
+    console = Console()
+    console.print("Consultando digitalizaciones...")
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Preparar consulta base
+    stmt = select(
+        Autoridad.clave,
+        VspDigitalizacion.expediente,
+        VspDigitalizacion.descripcion,
+        VspDigitalizacion.creado,
+    ).join(
+        Autoridad,
+    )
+
+    # Si viene la autoridad_clave
+    if autoridad_clave != "":
+        autoridad_clave = safe_clave(autoridad_clave)
+        if autoridad_clave == "":
+            console.print("[red]Clave de autoridad inválida[/red]")
+            raise Exit(code=1)
+        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
+
+    # Si viene la descripción
+    if descripcion != "":
+        descripcion = safe_string(descripcion)
+        if descripcion == "":
+            console.print("[red]Descripción inválida[/red]")
+            raise Exit(code=1)
+        stmt = stmt.filter(VspDigitalizacion.descripcion.contains(descripcion))
+
+    # Solo los que tengan estatus A
+    stmt = stmt.filter(VspDigitalizacion.estatus == "A")
+    stmt = stmt.order_by(VspDigitalizacion.descripcion).offset(offset).limit(limit)
+
+    # Mostrar tabla
+    tabla = Table(title="Digitalizaciones")
+    tabla.add_column("Autoridad clave")
+    tabla.add_column("Expediente")
+    tabla.add_column("Descripción")
+    tabla.add_column("Creado")
+    for item in db.execute(stmt):
+        tabla.add_row(
+            item.clave,
+            item.expediente,
+            item.descripcion,
+            item.creado.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+    console.print(tabla)
 
 
 @app.command()
