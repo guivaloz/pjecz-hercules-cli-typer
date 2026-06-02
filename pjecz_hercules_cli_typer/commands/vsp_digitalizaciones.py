@@ -21,61 +21,6 @@ app = Typer(help="VASPEC Digitalizaciones")
 
 
 @app.command()
-def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
-    """Consultar digitalizaciones"""
-    console = Console()
-    console.print("Consultando digitalizaciones...")
-
-    # Inicializar la base de datos
-    db = get_database()
-
-    # Preparar consulta base
-    stmt = select(
-        Autoridad.clave,
-        VspDigitalizacion.expediente,
-        VspDigitalizacion.descripcion,
-        VspDigitalizacion.creado,
-    ).join(
-        Autoridad,
-    )
-
-    # Si viene la autoridad_clave
-    if autoridad_clave != "":
-        autoridad_clave = safe_clave(autoridad_clave)
-        if autoridad_clave == "":
-            console.print("[red]Clave de autoridad inválida[/red]")
-            raise Exit(code=1)
-        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
-
-    # Si viene la descripción
-    if descripcion != "":
-        descripcion = safe_string(descripcion)
-        if descripcion == "":
-            console.print("[red]Descripción inválida[/red]")
-            raise Exit(code=1)
-        stmt = stmt.filter(VspDigitalizacion.descripcion.contains(descripcion))
-
-    # Solo los que tengan estatus A
-    stmt = stmt.filter(VspDigitalizacion.estatus == "A")
-    stmt = stmt.order_by(VspDigitalizacion.descripcion).offset(offset).limit(limit)
-
-    # Mostrar tabla
-    tabla = Table(title="Digitalizaciones")
-    tabla.add_column("Autoridad clave")
-    tabla.add_column("Expediente")
-    tabla.add_column("Descripción")
-    tabla.add_column("Creado")
-    for item in db.execute(stmt):
-        tabla.add_row(
-            item.clave,
-            item.expediente,
-            item.descripcion,
-            item.cleado,
-        )
-    console.print(tabla)
-
-
-@app.command()
 def add(
     autoridad_clave: str = "",
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
@@ -248,6 +193,27 @@ def add(
 
 
 @app.command()
+def check_and_copy(
+    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+):
+    """Obtener los archivos del bucket pjecz-cetus y solo copiar los nuevos al bucket pjecz-aquarius con rclone"""
+    console = Console()
+    if save:
+        console.print("Ejecutando los comandos para revisar y copiar entre buckets...")
+    else:
+        console.print("Mostrando los comandos para revisar y copiar entre buckets...")
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Consultar las autoridades donde es_vsp_digitalizaciones es True
+
+    # Obtener el listado de archivos en el bucket pjecz-cetus para cada autoridad
+
+    # Comparar con los archivos que ya se tienen en la base de datos, solo copiar los que no existan en el bucket pjecz-aquarius
+
+
+@app.command()
 def copy(
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
@@ -288,6 +254,61 @@ def copy(
 
     if save:
         console.print("[bold green]Copia completada.[/bold green]")
+
+
+@app.command()
+def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
+    """Consultar digitalizaciones"""
+    console = Console()
+    console.print("Consultando digitalizaciones...")
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Preparar consulta base
+    stmt = select(
+        Autoridad.clave,
+        VspDigitalizacion.expediente,
+        VspDigitalizacion.descripcion,
+        VspDigitalizacion.creado,
+    ).join(
+        Autoridad,
+    )
+
+    # Si viene la autoridad_clave
+    if autoridad_clave != "":
+        autoridad_clave = safe_clave(autoridad_clave)
+        if autoridad_clave == "":
+            console.print("[red]Clave de autoridad inválida[/red]")
+            raise Exit(code=1)
+        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
+
+    # Si viene la descripción
+    if descripcion != "":
+        descripcion = safe_string(descripcion)
+        if descripcion == "":
+            console.print("[red]Descripción inválida[/red]")
+            raise Exit(code=1)
+        stmt = stmt.filter(VspDigitalizacion.descripcion.contains(descripcion))
+
+    # Solo los que tengan estatus A
+    stmt = stmt.filter(VspDigitalizacion.estatus == "A")
+    stmt = stmt.order_by(VspDigitalizacion.descripcion).offset(offset).limit(limit)
+
+    # Mostrar tabla
+    tabla = Table(title="Digitalizaciones")
+    tabla.add_column("Autoridad clave")
+    tabla.add_column("Expediente")
+    tabla.add_column("Descripción")
+    tabla.add_column("Creado")
+    for item in db.execute(stmt):
+        tabla.add_row(
+            item.clave,
+            item.expediente,
+            item.descripcion,
+            item.creado.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+    console.print(tabla)
 
 
 @app.command()
