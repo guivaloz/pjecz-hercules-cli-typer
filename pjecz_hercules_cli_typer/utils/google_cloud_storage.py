@@ -246,6 +246,31 @@ def get_public_url_from_gcs(bucket_name: str, blob_name: str) -> str:
     return blob.public_url
 
 
+def get_blob_from_gcs(bucket_name: str, blob_name: str) -> Blob:
+    """
+    Get blob from Google Cloud Storage
+
+    :param bucket_name: Name of the bucket
+    :param blob_name: Path to the file
+    :return: blob
+    """
+
+    # Get bucket
+    storage_client = storage.Client()
+    try:
+        bucket = storage_client.get_bucket(bucket_name)
+    except NotFound as error:
+        raise BucketNotFoundError("Bucket no encontrado") from error
+
+    # Get file
+    blob = bucket.get_blob(blob_name)
+    if blob is None:
+        raise FileNotFoundError("Archivo no encontrado")
+
+    # Return blob
+    return blob
+
+
 def get_file_from_gcs(bucket_name: str, blob_name: str) -> bytes:
     """
     Get file from Google Cloud Storage

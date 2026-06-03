@@ -2,6 +2,7 @@
 VASPEC Digitalizaciones command
 """
 
+import json
 import logging
 import subprocess
 import uuid
@@ -20,7 +21,11 @@ from pjecz_hercules_cli_typer.config.settings import get_settings
 from pjecz_hercules_cli_typer.models.autoridades import Autoridad
 from pjecz_hercules_cli_typer.models.vsp_digitalizaciones import VspDigitalizacion
 from pjecz_hercules_cli_typer.utils.database import get_database
-from pjecz_hercules_cli_typer.utils.google_cloud_storage import get_blobs_from_gcs, update_blob_name_in_gcs
+from pjecz_hercules_cli_typer.utils.google_cloud_storage import (
+    get_blob_from_gcs,
+    get_blobs_from_gcs,
+    update_blob_name_in_gcs,
+)
 from pjecz_hercules_cli_typer.utils.safe_string import safe_clave, safe_string
 
 bitacora = logging.getLogger(__name__)
@@ -37,7 +42,7 @@ app = Typer(help="VASPEC Digitalizaciones")
 def copy_all(
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
-    """Copiar TODOS los archivos del bucket pjecz-cetus al bucket pjecz-aquarius con rclone"""
+    """Copiar TODOS los archivos del bucket original al bucket final con rclone"""
     console = Console()
     if save:
         console.print("Ejecutando los comandos para copiar entre buckets...")
@@ -84,7 +89,7 @@ def copy_new(
     autoridad_clave: str = "",
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
-    """Obtener los archivos del bucket pjecz-cetus y solo copiar los nuevos al bucket pjecz-aquarius con rclone"""
+    """Obtener los archivos del bucket original y solo copiar los nuevos al bucket final con rclone"""
     console = Console()
     if save:
         console.print("Ejecutando los comandos para revisar y copiar entre buckets...")
@@ -92,6 +97,10 @@ def copy_new(
     else:
         console.print("Mostrando los comandos para revisar y copiar entre buckets...")
         title = "Estos archivos se podrían copiar al bucket de destino:"
+
+    # Inicializar los contadores de archivos encontrados y copiados
+    contador_encontrados = 0
+    contador_copiados = 0
 
     # Obtener configuración
     config = get_settings()
@@ -110,7 +119,7 @@ def copy_new(
         autoridades.append(autoridad)
     else:
         # De lo contrario, consultar las autoridades donde es_vsp_digitalizaciones es True
-        stmt = select(Autoridad.id, Autoridad.clave).where(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave)
+        stmt = select(Autoridad).where(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave)
         autoridades = db.execute(stmt).all()
         if autoridades is None:
             console.print("[yellow]No se encontraron autoridades con digitalizaciones[/yellow]")
@@ -121,6 +130,7 @@ def copy_new(
     tabla.add_column("Autoridad clave")
     tabla.add_column("Expediente")
     tabla.add_column("Descripción")
+    tabla.add_column("Tamaño (bytes)")
     tabla.add_column("Archivo UUID")
 
     # Bucle por cada autoridad
@@ -131,104 +141,153 @@ def copy_new(
             origen_dir = f"{config.VASPEC_DIR}/"
         origen_dir = f"{origen_dir}{autoridad.clave.lower()}"
 
-        # Obtener el listado de archivos en el bucket pjecz-cetus para cada autoridad
+        # Definir la ruta en el bucket de origen
+        remoto_origen = f"{config.RCLONE_REMOTE_ORIGEN}:/{config.CLOUD_STORAGE_DEPOSITO_VASPEC}/{origen_dir}"
+        console.print(f"Obteniendo directorios de años en [cyan]{remoto_origen}[/cyan]...")
+
+        # Obtener el listado de directorios de años en el bucket de origen
+        result = subprocess.run(["rclone", "lsjson", remoto_origen], capture_output=True, text=True, check=True)
+        if result.returncode != 0:
+            console.print(f"[red]Error en rclone:[/red] {result.returncode}")
+            raise Exit(code=result.returncode)
         try:
-            blobs = get_blobs_from_gcs(config.CLOUD_STORAGE_DEPOSITO_VASPEC, origen_dir)
-        except Exception as error:
-            console.print(f"[red]Error al obtener los archivos del bucket de GCS: {error}[/red]")
+            anios = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            console.print(f"[red]Error al decodificar JSON:[/red] {error}")
             raise Exit(code=1)
 
-        # Si no se encontraron archivos, continuar con la siguiente autoridad
-        if not blobs:
-            console.print(
-                f"[yellow]No se encontraron archivos en el bucket de GCS para la autoridad {autoridad.clave}[/yellow]"
-            )
-            continue
-
-        # Bucle por cada blob
-        contador = 0
-        for blob in blobs:
-            if blob.name is None:
-                console.print(f"[yellow]Archivo sin nombre: {blob}[/yellow]")
-                continue
-
-            # Se espera que cada blob sea CLAVE/AAAA/NNNNN-AAAA-...pdf, donde...
-            # - CLAVE es la clave de la autoridad,
-            # - NNNNN es el número en cinco dígitos del expediente,
-            # - AAAA es el año en cuatro dígitos del expediente,
-            # - y el resto es la descripción
+        # Bucle por cada año encontrado
+        for anio in anios:
+            if anio.get("IsDir") is not True:
+                continue  # Si NO es un directorio, se omite
+            remoto_origen_anio = f"{remoto_origen}/{anio['Name']}"
+            console.print(f"Obteniendo archivos en [cyan]{remoto_origen_anio}[/cyan]...")
+            result = subprocess.run(["rclone", "lsjson", remoto_origen_anio], capture_output=True, text=True, check=True)
+            if result.returncode != 0:
+                console.print(f"[red]Error en rclone:[/red] {result.returncode}")
+                raise Exit(code=result.returncode)
             try:
-                # Separar las partes de derecha a izquierda /AUTORIDAD_DIR/ANIO/ARCHIVO
-                parts = blob.name.split("/")
-                archivo_part = parts[-1]
-                anio_part = parts[-2]
-                autoridad_dir = parts[-3]
+                archivos = json.loads(result.stdout)
+            except json.JSONDecodeError as error:
+                console.print(f"[red]Error al decodificar JSON:[/red] {error}")
+                raise Exit(code=1)
+
+            # Bucle por cada archivo encontrado en el año
+            for archivo in archivos:
+                if archivo.get("IsDir") is True:
+                    continue  # Si es un directorio, se omite
+                origen_archivo = f"{remoto_origen_anio}/{archivo['Name']}"
+                origen_tamano = archivo.get("Size", 0)
+
                 # Separar las partes del nombre del archivo NNNNN-YYYY-DESC.pdf
-                archivo_nombre = archivo_part.split(".")[0]  # Obtener la parte del nombre sin la extensión
-                expediente_parts = archivo_nombre.split("-")
-                expediente_num = expediente_parts[0]
-                expediente_anio = expediente_parts[1]
-                descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
-            except (IndexError, ValueError) as error:
-                console.print(f"[yellow]Error al procesar el archivo {blob.name}: {error}[/yellow]")
-                continue
+                try:
+                    archivo_nombre = archivo["Name"].split(".")[0]  # Obtener la parte del nombre sin la extensión
+                    expediente_parts = archivo_nombre.split("-")
+                    expediente_num = expediente_parts[0]
+                    expediente_anio = expediente_parts[1]
+                    descripcion = " ".join(expediente_parts[2:]) if len(expediente_parts) > 2 else ""
+                except (IndexError, ValueError) as error:
+                    console.print(f"[yellow]Falla al procesar el archivo:[/yellow] {origen_archivo} {error}")
+                    continue
 
-            # Validar que expediente_num sea un número de cinco dígitos y convertir a entero
-            if not expediente_num.isdigit() or len(expediente_num) != 5:
-                console.print(f"[yellow]Número de expediente inválido en el archivo {blob.name}[/yellow]")
-                continue
-            expediente_num = int(expediente_num)
+                # Validar que expediente_num sea un número de cinco dígitos y convertir a entero
+                if not expediente_num.isdigit() or len(expediente_num) != 5:
+                    console.print(f"[yellow]Número de expediente inválido en el archivo:[/yellow] {origen_archivo}")
+                    continue
+                expediente_num = int(expediente_num)
 
-            # Validar que expediente_anio sea un número de cuatro dígitos y convertir a entero
-            if not expediente_anio.isdigit() or len(expediente_anio) != 4:
-                console.print(f"[yellow]Año de expediente inválido en el archivo {blob.name}[/yellow]")
-                continue
-            expediente_anio = int(expediente_anio)
+                # Validar que expediente_anio sea un número de cuatro dígitos y convertir a entero
+                if not expediente_anio.isdigit() or len(expediente_anio) != 4:
+                    console.print(f"[yellow]Año de expediente inválido en el archivo:[/yellow] {origen_archivo}")
+                    continue
+                expediente_anio = int(expediente_anio)
 
-            # Consultar en la base de datos la posible existencia de esa digitalización
-            stmt = (
-                select(
-                    VspDigitalizacion.id,
-                    VspDigitalizacion.archivo_uuid,
+                # Consultar en la base de datos la posible existencia de esa digitalización
+                stmt = (
+                    select(
+                        VspDigitalizacion.id,
+                    )
+                    .join(
+                        Autoridad,
+                    )
+                    .where(
+                        Autoridad.id == autoridad.id,
+                        VspDigitalizacion.expediente_anio == expediente_anio,
+                        VspDigitalizacion.expediente_num == expediente_num,
+                        VspDigitalizacion.descripcion == descripcion,
+                    )
                 )
-                .join(
-                    Autoridad,
+                posible_vsp_digitalizacion = db.execute(stmt).first()
+
+                # Si YA existe, se omite
+                if posible_vsp_digitalizacion:
+                    contador_encontrados += 1
+                    continue
+
+                # Definir el nuevo nombre del archivo a UUID.pdf
+                nuevo_uuid = uuid.uuid4()
+                destino_archivo = f"{autoridad.clave}/{expediente_anio}/{str(nuevo_uuid)}.pdf"
+
+                # Agregar el reglón a la tabla
+                tabla.add_row(
+                    autoridad.clave,
+                    f"{expediente_num}/{expediente_anio}",
+                    descripcion,
+                    str(origen_tamano),
+                    destino_archivo,
                 )
-                .where(
-                    Autoridad.id == autoridad.id,
-                    VspDigitalizacion.expediente_anio == expediente_anio,
-                    VspDigitalizacion.expediente_num == expediente_num,
-                    VspDigitalizacion.descripcion == descripcion,
+                contador_copiados += 1
+
+                # Ejecutar rclone para copiar el archivo al nuevo destino
+                remoto_destino = (
+                    f"{config.RCLONE_REMOTE_DESTINO}:/{config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES}/{destino_archivo}"
                 )
-            )
-            posible_vsp_digitalizacion = db.execute(stmt).first()
+                if save:
+                    console.print(f"Copiando [cyan]{origen_archivo}[/cyan] -> [green]{remoto_destino}[/green]")
+                    result = subprocess.run(["rclone", "--quiet", "copy", origen_archivo, remoto_destino])
+                    if result.returncode != 0:
+                        console.print(f"[red]Error en rclone al copiar:[/red] {origen_archivo} (código {result.returncode})")
+                        raise Exit(code=result.returncode)
 
-            # Si YA existe, se omite
-            if posible_vsp_digitalizacion:
-                continue
+                # Obtener el blob del nuevo archivo
+                try:
+                    blob = get_blob_from_gcs(config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES, destino_archivo)
+                except Exception as error:
+                    console.print(f"[red]Error al obtener el archivo del bucket de GCS:[/red] {destino_archivo} {error}")
+                    raise Exit(code=1)
 
-            # Definir el nuevo nombre del archivo a UUID.pdf
-            nuevo_uuid = uuid.uuid4()
-            destino_archivo = f"{autoridad.clave}/{anio_part}/{str(nuevo_uuid)}.pdf"
-
-            # Agregar el reglón a la tabla
-            tabla.add_row(
-                autoridad.clave,
-                f"{expediente_num}/{expediente_anio}",
-                descripcion,
-                destino_archivo,
-            )
+                # Insertar registro en la base de datos
+                if save:
+                    nueva_vsp_digitalizacion = VspDigitalizacion(
+                        autoridad_id=autoridad.id,
+                        expediente=f"{expediente_num}/{expediente_anio}",
+                        expediente_anio=expediente_anio,
+                        expediente_num=expediente_num,
+                        descripcion=descripcion,
+                        observaciones=None,
+                        archivo_uuid=nuevo_uuid,
+                        archivo=destino_archivo,
+                        url=blob.public_url,
+                        tamano=blob.size,
+                        tiempo=blob.updated,
+                    )
+                    db.add(nueva_vsp_digitalizacion)
+                    db.commit()
 
     # Mostrar tabla
     console.print(tabla)
 
     if save:
-        console.print("[bold green]Copia completada.[/bold green]")
+        console.print(f"[bold green]Se copiaron {contador_copiados} archivos nuevos al bucket de destino.[/bold green]")
+        console.print(f"[yellow]Y se omitieron {contador_encontrados} archivos porque ya existen.[/yellow]")
+    else:
+        console.print(f"[cyan]Se podrían copiar {contador_copiados} archivos nuevos.[/cyan]")
+        console.print(f"[yellow]Y se encontraron {contador_encontrados} archivos ya existentes.[/yellow]")
 
 
 @app.command()
 def export_to_xlsx(autoridad_clave: str = ""):
-    """Exportar digitalizaciones a un archivo XLSX"""
+    """Exportar la tabla vsp_digitalizaciones a un archivo XLSX"""
     console = Console()
     console.print("Consultando digitalizaciones...")
 
@@ -314,7 +373,7 @@ def export_to_xlsx(autoridad_clave: str = ""):
 
 @app.command()
 def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
-    """Consultar digitalizaciones"""
+    """Consultar la tabla vsp_digitalizaciones"""
     console = Console()
     console.print("Consultando digitalizaciones...")
 
@@ -372,7 +431,7 @@ def rename(
     autoridad_clave: str = "",
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
-    """Renombrar los archivos en el bucket pjecz-aquarius a UUID.pdf y actualizar la base de datos"""
+    """Renombrar los archivos en el bucket final a UUID.pdf y actualizar la base de datos"""
     console = Console()
     if save:
         console.print("Renombrando los archivos a UUID.pdf...")
