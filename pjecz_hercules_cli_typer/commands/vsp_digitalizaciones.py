@@ -22,6 +22,7 @@ from pjecz_hercules_cli_typer.models.autoridades import Autoridad
 from pjecz_hercules_cli_typer.models.vsp_digitalizaciones import VspDigitalizacion
 from pjecz_hercules_cli_typer.utils.database import get_database
 from pjecz_hercules_cli_typer.utils.google_cloud_storage import (
+    FileNotFoundError,
     get_blob_from_gcs,
     get_blobs_from_gcs,
     update_blob_name_in_gcs,
