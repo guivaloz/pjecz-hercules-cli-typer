@@ -107,15 +107,11 @@ def actualizar(
                 blob = get_blob_from_gcs(config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES, digitalizacion.archivo)
             except FileNotFoundError:
                 console.print(f"[yellow]No se encuentra este archivo en GCS:[/yellow] {digitalizacion.archivo}")
+                contador_no_encontrados += 1
+                continue
             except Exception as error:
                 console.print(f"[red]Error al obtener este archivo en GCS:[/red] {error}")
                 raise Exit(code=1)
-
-            # Si no se encuentra el blob, se muestra un mensaje y se cuenta como no encontrado
-            if blob is None:
-                console.print(f"[yellow]No se encuentra este archivo en GCS:[/yellow] {digitalizacion.archivo}")
-                contador_no_encontrados += 1
-                continue
 
             # Por defecto, se asume que no hay cambios
             hay_cambios = False
