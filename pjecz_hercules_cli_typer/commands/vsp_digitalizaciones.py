@@ -104,6 +104,7 @@ def copy_new(
 
     # Obtener configuración
     config = get_settings()
+    timezone = pytz.timezone(config.TZ)
 
     # Inicializar la base de datos
     db = get_database()
@@ -111,16 +112,14 @@ def copy_new(
     # Si viene la autoridad_clave, consultarla
     autoridades = []
     if autoridad_clave != "":
-        stmt = select(Autoridad).where(Autoridad.clave == safe_clave(autoridad_clave))
-        autoridad = db.execute(stmt).scalar_one_or_none()
+        autoridad = db.query(Autoridad).filter(Autoridad.clave == safe_clave(autoridad_clave)).first()
         if autoridad is None:
             console.print("[red]Clave de autoridad inválida[/red]")
             raise Exit(code=1)
         autoridades.append(autoridad)
     else:
         # De lo contrario, consultar las autoridades donde es_vsp_digitalizaciones es True
-        stmt = select(Autoridad).where(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave)
-        autoridades = db.execute(stmt).all()
+        autoridades = db.query(Autoridad).filter(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave).all()
         if autoridades is None:
             console.print("[yellow]No se encontraron autoridades con digitalizaciones[/yellow]")
             return
@@ -143,7 +142,7 @@ def copy_new(
 
         # Definir la ruta en el bucket de origen
         remoto_origen = f"{config.RCLONE_REMOTE_ORIGEN}:/{config.CLOUD_STORAGE_DEPOSITO_VASPEC}/{origen_dir}"
-        console.print(f"Obteniendo directorios de años en [cyan]{remoto_origen}[/cyan]...")
+        console.print(f"Obteniendo años en [cyan]{remoto_origen}[/cyan]...")
 
         # Obtener el listado de directorios de años en el bucket de origen
         result = subprocess.run(["rclone", "lsjson", remoto_origen], capture_output=True, text=True, check=True)
@@ -160,6 +159,13 @@ def copy_new(
         for anio in anios:
             if anio.get("IsDir") is not True:
                 continue  # Si NO es un directorio, se omite
+
+            # Si el nombre del directorio no es un número de cuatro dígitos, se omite
+            if not anio.get("Name", "").isdigit() or len(anio.get("Name", "")) != 4:
+                console.print(f"[yellow]Se omite el directorio {anio.get('Name', '')} porque no es un año válido[/yellow]")
+                continue
+
+            # Obtener el listado de archivos en el año
             remoto_origen_anio = f"{remoto_origen}/{anio['Name']}"
             console.print(f"Obteniendo archivos en [cyan]{remoto_origen_anio}[/cyan]...")
             result = subprocess.run(["rclone", "lsjson", remoto_origen_anio], capture_output=True, text=True, check=True)
@@ -203,21 +209,17 @@ def copy_new(
                 expediente_anio = int(expediente_anio)
 
                 # Consultar en la base de datos la posible existencia de esa digitalización
-                stmt = (
-                    select(
-                        VspDigitalizacion.id,
-                    )
-                    .join(
-                        Autoridad,
-                    )
-                    .where(
+                posible_vsp_digitalizacion = (
+                    db.query(VspDigitalizacion)
+                    .join(Autoridad)
+                    .filter(
                         Autoridad.id == autoridad.id,
                         VspDigitalizacion.expediente_anio == expediente_anio,
                         VspDigitalizacion.expediente_num == expediente_num,
                         VspDigitalizacion.descripcion == descripcion,
                     )
+                    .first()
                 )
-                posible_vsp_digitalizacion = db.execute(stmt).first()
 
                 # Si YA existe, se omite
                 if posible_vsp_digitalizacion:
@@ -227,16 +229,6 @@ def copy_new(
                 # Definir el nuevo nombre del archivo a UUID.pdf
                 nuevo_uuid = uuid.uuid4()
                 destino_archivo = f"{autoridad.clave}/{expediente_anio}/{str(nuevo_uuid)}.pdf"
-
-                # Agregar el reglón a la tabla
-                tabla.add_row(
-                    autoridad.clave,
-                    f"{expediente_num}/{expediente_anio}",
-                    descripcion,
-                    str(origen_tamano),
-                    destino_archivo,
-                )
-                contador_copiados += 1
 
                 # Ejecutar rclone para copiar el archivo al nuevo destino
                 remoto_destino = (
@@ -248,13 +240,24 @@ def copy_new(
                     if result.returncode != 0:
                         console.print(f"[red]Error en rclone al copiar:[/red] {origen_archivo} (código {result.returncode})")
                         raise Exit(code=result.returncode)
+                else:
+                    console.print(f"Simulando [cyan]{origen_archivo}[/cyan] -> [green]{remoto_destino}[/green]")
 
                 # Obtener el blob del nuevo archivo
-                try:
-                    blob = get_blob_from_gcs(config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES, destino_archivo)
-                except Exception as error:
-                    console.print(f"[red]Error al obtener el archivo del bucket de GCS:[/red] {destino_archivo} {error}")
-                    raise Exit(code=1)
+                url = ""
+                tamano = origen_tamano
+                tiempo = datetime.now(tz=timezone)
+                if save:
+                    try:
+                        blob = get_blob_from_gcs(config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES, destino_archivo)
+                        url = blob.public_url if blob.public_url else ""
+                        tamano = blob.size if blob.size else None
+                        tiempo = blob.updated if blob.updated else None
+                    except FileNotFoundError:
+                        console.print(f"[yellow]No se encuentra este archivo en GCS:[/yellow] {destino_archivo}")
+                    except Exception as error:
+                        console.print(f"[red]Error al obtener este archivo en GCS:[/red] {error}")
+                        raise Exit(code=1)
 
                 # Insertar registro en la base de datos
                 if save:
@@ -267,12 +270,22 @@ def copy_new(
                         observaciones=None,
                         archivo_uuid=nuevo_uuid,
                         archivo=destino_archivo,
-                        url=blob.public_url,
-                        tamano=blob.size,
-                        tiempo=blob.updated,
+                        url=url,
+                        tamano=tamano,
+                        tiempo=tiempo,
                     )
                     db.add(nueva_vsp_digitalizacion)
                     db.commit()
+
+                # Agregar el reglón a la tabla
+                tabla.add_row(
+                    autoridad.clave,
+                    f"{expediente_num}/{expediente_anio}",
+                    descripcion,
+                    str(origen_tamano),
+                    destino_archivo,
+                )
+                contador_copiados += 1
 
     # Mostrar tabla
     console.print(tabla)
