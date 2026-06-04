@@ -40,10 +40,140 @@ app = Typer(help="VASPEC Digitalizaciones")
 
 
 @app.command()
-def copy_all(
+def actualizar(
+    autoridad_clave: str = "",
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
-    """Copiar TODOS los archivos del bucket original al bucket final con rclone"""
+    """Actualizar las digitalizaciones para definir su URL pública, tamaño y tiempo de actualización según el blob en GCS"""
+    console = Console()
+    if save:
+        console.print("Actualizando las digitalizaciones en el bucket final...")
+        title = "Se han actualizado las siguientes digitalizaciones:"
+    else:
+        console.print("Mostrando las digitalizaciones que se pueden actualizar...")
+        title = "Estas digitalizaciones se podrían actualizar:"
+
+    # Inicializar los contadores de archivos encontrados y copiados
+    contador_actualizados = 0
+    contador_no_encontrados = 0
+    contador_sin_cambios = 0
+
+    # Obtener configuración
+    config = get_settings()
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Si viene la autoridad_clave, consultarla
+    autoridades = []
+    if autoridad_clave != "":
+        autoridad = db.query(Autoridad).filter(Autoridad.clave == safe_clave(autoridad_clave)).first()
+        if autoridad is None:
+            console.print("[red]Clave de autoridad inválida[/red]")
+            raise Exit(code=1)
+        autoridades.append(autoridad)
+    else:
+        # De lo contrario, consultar las autoridades donde es_vsp_digitalizaciones es True
+        autoridades = db.query(Autoridad).filter(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave).all()
+        if autoridades is None:
+            console.print("[yellow]No se encontraron autoridades con digitalizaciones[/yellow]")
+            return
+
+    # Inicializar la tabla
+    tabla = Table(title=title)
+    tabla.add_column("Autoridad clave")
+    tabla.add_column("Expediente")
+    tabla.add_column("Descripción")
+    tabla.add_column("Tamaño (bytes)")
+    tabla.add_column("Archivo UUID")
+
+    # Bucle por cada autoridad
+    for autoridad in autoridades:
+        # Consultar las digitalizaciones de esa autoridad
+        digitalizaciones = (
+            db.query(VspDigitalizacion)
+            .join(Autoridad)
+            .filter(
+                Autoridad.id == autoridad.id,
+                VspDigitalizacion.estatus == "A",
+            )
+            .all()
+        )
+
+        # Bucle por cada digitalización
+        for digitalizacion in digitalizaciones:
+            # Obtener el blob de la digitalización
+            try:
+                blob = get_blob_from_gcs(config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES, digitalizacion.archivo)
+            except FileNotFoundError:
+                console.print(f"[yellow]No se encuentra este archivo en GCS:[/yellow] {digitalizacion.archivo}")
+            except Exception as error:
+                console.print(f"[red]Error al obtener este archivo en GCS:[/red] {error}")
+                raise Exit(code=1)
+
+            # Si no se encuentra el blob, se muestra un mensaje y se cuenta como no encontrado
+            if blob is None:
+                console.print(f"[yellow]No se encuentra este archivo en GCS:[/yellow] {digitalizacion.archivo}")
+                contador_no_encontrados += 1
+                continue
+
+            # Por defecto, se asume que no hay cambios
+            hay_cambios = False
+
+            # Si NO tiene URL pública o si es diferente a la URL pública del blob, se actualiza
+            if not digitalizacion.url or digitalizacion.url != blob.public_url:
+                digitalizacion.url = blob.public_url if blob.public_url else ""
+                hay_cambios = True
+
+            # Si NO tiene tamaño o si es diferente al tamaño del blob, se actualiza
+            if not digitalizacion.tamano or digitalizacion.tamano != blob.size:
+                digitalizacion.tamano = blob.size if blob.size else None
+                hay_cambios = True
+
+            # Si NO tiene tiempo o si es diferente al tiempo de actualización del blob, se actualiza
+            if not digitalizacion.tiempo or digitalizacion.tiempo != blob.updated:
+                digitalizacion.tiempo = blob.updated if blob.updated else None
+                hay_cambios = True
+
+            # Si hay cambios y se está guardando, se actualiza la base de datos
+            if hay_cambios:
+                if save:
+                    db.add(digitalizacion)
+                    db.commit()
+                contador_actualizados += 1
+
+                # Agregar el reglón a la tabla
+                tabla.add_row(
+                    autoridad.clave,
+                    digitalizacion.expediente,
+                    digitalizacion.descripcion,
+                    str(digitalizacion.tamano) if digitalizacion.tamano else "N/A",
+                    str(digitalizacion.archivo_uuid),
+                )
+            else:
+                contador_sin_cambios += 1
+
+    # Mostrar tabla
+    if contador_actualizados:
+        console.print(tabla)
+
+    if save:
+        if contador_actualizados:
+            console.print(f"[bold green]Se actualizaron {contador_actualizados} en la base de datos.[/bold green]")
+    else:
+        if contador_actualizados:
+            console.print(f"[bold green]Se podrían actualizar {contador_actualizados}.[/bold green]")
+    if contador_sin_cambios:
+        console.print(f"[cyan]Hay {contador_sin_cambios} que no necesitan cambios.[/cyan]")
+    if contador_no_encontrados:
+        console.print(f"[red]LAMENTABLEMENTE hay {contador_no_encontrados} SIN archivo.[/red]")
+
+
+@app.command()
+def copiar_todas(
+    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+):
+    """Copiar TODAS las digitalizaciones del bucket original al bucket final con rclone"""
     console = Console()
     if save:
         console.print("Ejecutando los comandos para copiar entre buckets...")
@@ -86,11 +216,11 @@ def copy_all(
 
 
 @app.command()
-def copy_new(
+def copiar(
     autoridad_clave: str = "",
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
-    """Obtener los archivos del bucket original y solo copiar los nuevos al bucket final con rclone"""
+    """Copiar las nuevas digitalizaciones del bucket original y al bucket final con rclone"""
     console = Console()
     if save:
         console.print("Ejecutando los comandos para revisar y copiar entre buckets...")
@@ -244,7 +374,7 @@ def copy_new(
                 else:
                     console.print(f"Simulando [cyan]{origen_archivo}[/cyan] -> [green]{remoto_destino}[/green]")
 
-                # Obtener el blob del nuevo archivo
+                # Obtener el blob de la nueva digitalización
                 url = ""
                 tamano = origen_tamano
                 tiempo = datetime.now(tz=timezone)
@@ -292,15 +422,19 @@ def copy_new(
     console.print(tabla)
 
     if save:
-        console.print(f"[bold green]Se copiaron {contador_copiados} archivos nuevos al bucket de destino.[/bold green]")
-        console.print(f"[yellow]Y se omitieron {contador_encontrados} archivos porque ya existen.[/yellow]")
+        if contador_copiados:
+            console.print(f"[bold green]Se copiaron {contador_copiados} archivos nuevos al bucket de destino.[/bold green]")
+        if contador_encontrados:
+            console.print(f"[yellow]Y se omitieron {contador_encontrados} archivos porque ya existen.[/yellow]")
     else:
-        console.print(f"[cyan]Se podrían copiar {contador_copiados} archivos nuevos.[/cyan]")
-        console.print(f"[yellow]Y se encontraron {contador_encontrados} archivos ya existentes.[/yellow]")
+        if contador_copiados:
+            console.print(f"[cyan]Se podrían copiar {contador_copiados} archivos nuevos.[/cyan]")
+        if contador_encontrados:
+            console.print(f"[yellow]Y se encontraron {contador_encontrados} archivos ya existentes.[/yellow]")
 
 
 @app.command()
-def export_to_xlsx(autoridad_clave: str = ""):
+def exportar(autoridad_clave: str = ""):
     """Exportar la tabla vsp_digitalizaciones a un archivo XLSX"""
     console = Console()
     console.print("Consultando digitalizaciones...")
@@ -382,11 +516,14 @@ def export_to_xlsx(autoridad_clave: str = ""):
         raise Exit(code=1)
 
     # Mensaje de éxito
-    console.print(f"[bold green]Se exportaron {contador} filas al archivo {exportacion.name}[/bold green]")
+    if contador:
+        console.print(f"[bold green]Se exportaron {contador} filas al archivo {exportacion.name}[/bold green]")
+    else:
+        console.print("[yellow]No se encontraron digitalizaciones para exportar. El archivo XLSX está vacío.[/yellow]")
 
 
 @app.command()
-def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
+def consultar(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
     """Consultar la tabla vsp_digitalizaciones"""
     console = Console()
     console.print("Consultando digitalizaciones...")
@@ -441,7 +578,7 @@ def query(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, lim
 
 
 @app.command()
-def rename(
+def renombrar(
     autoridad_clave: str = "",
     save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
 ):
@@ -620,4 +757,7 @@ def rename(
 
     # Mostrar el contador de inserciones
     if save:
-        console.print(f"[bold green]Se renombraron {contador} digitalizaciones en la base de datos.[/bold green]")
+        if contador:
+            console.print(f"[bold green]Se renombraron {contador} digitalizaciones en la base de datos.[/bold green]")
+        else:
+            console.print("[yellow]No se encontraron digitalizaciones para renombrar.[/yellow]")
