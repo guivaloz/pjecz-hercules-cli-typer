@@ -147,7 +147,7 @@ def actualizar(
                 # Renombrar archivo en el bucket
                 if save:
                     try:
-                        nuevo_url = update_blob_name_in_gcs(
+                        digitalizacion.url = update_blob_name_in_gcs(
                             config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES,
                             original_blob_name,
                             nuevo_blob_name,
@@ -155,9 +155,8 @@ def actualizar(
                     except Exception as error:
                         console.print(f"[red]Error al renombrar el archivo {original_blob_name}: {error}[/red]")
                         raise Exit(code=1)
-                # Cambiar el nombre del archivo y la URL pública en la base de datos
+                # Cambiar el nombre del archivo en la base de datos
                 digitalizacion.archivo = nuevo_blob_name
-                digitalizacion.url = nuevo_url
                 # Hay cambios
                 hay_cambios = True
 
