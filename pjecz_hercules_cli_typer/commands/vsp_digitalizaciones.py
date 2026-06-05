@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Annotated
 
 import pytz
+from google.cloud import storage
+from google.cloud.exceptions import NotFound
 from openpyxl import Workbook
 from rich.console import Console
 from rich.table import Table
@@ -20,11 +22,6 @@ from pjecz_hercules_cli_typer.config.settings import get_settings
 from pjecz_hercules_cli_typer.models.autoridades import Autoridad
 from pjecz_hercules_cli_typer.models.vsp_digitalizaciones import VspDigitalizacion
 from pjecz_hercules_cli_typer.utils.database import get_database
-from pjecz_hercules_cli_typer.utils.google_cloud_storage import (
-    FileNotFoundError,
-    get_blob_from_gcs,
-    update_blob_name_in_gcs,
-)
 from pjecz_hercules_cli_typer.utils.safe_string import safe_clave, safe_string
 
 bitacora = logging.getLogger(__name__)
@@ -57,6 +54,14 @@ def actualizar(
     # Validar que se haya configurado el depósito
     if config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES == "":
         console.print("[red]No se ha configurado el depósito[/red]")
+        raise Exit(code=1)
+
+    # Get bucket
+    storage_client = storage.Client()
+    try:
+        bucket = storage_client.get_bucket(config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES)
+    except NotFound:
+        console.print("[red]Bucket no encontrado[/red]")
         raise Exit(code=1)
 
     # Inicializar los contadores de archivos encontrados y copiados
@@ -121,14 +126,14 @@ def actualizar(
 
             # Obtener el blob de la digitalización
             try:
-                blob = get_blob_from_gcs(config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES, digitalizacion.archivo)
-            except FileNotFoundError:
-                console.print(f"[yellow]No se encuentra este archivo:[/yellow] {digitalizacion.archivo}")
-                contador_no_encontrados += 1
-                continue
+                blob = bucket.get_blob(digitalizacion.archivo)
             except Exception as error:
                 console.print(f"[red]Error al obtener este archivo:[/red] {digitalizacion.archivo} {error}")
                 raise Exit(code=1)
+            if blob is None:
+                console.print(f"[yellow]No se encuentra este archivo:[/yellow] {digitalizacion.archivo}")
+                contador_no_encontrados += 1
+                continue
 
             # Tomar el nombre original, y validar que el blob tenga un nombre, si no, se omite
             original_blob_name = blob.name
@@ -146,15 +151,34 @@ def actualizar(
                 nuevo_blob_name = f"{autoridad.clave}/{digitalizacion.expediente_anio}/{str(digitalizacion.archivo_uuid)}.pdf"
                 # Renombrar archivo en el bucket
                 if save:
+                    # Get the old blob
                     try:
-                        digitalizacion.url = update_blob_name_in_gcs(
-                            config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES,
-                            original_blob_name,
-                            nuevo_blob_name,
-                        )
+                        old_blob = bucket.get_blob(original_blob_name)
                     except Exception as error:
-                        console.print(f"[red]Error al renombrar el archivo {original_blob_name}: {error}[/red]")
+                        console.print(f"[red]Error al obtener el archivo actual:[/red] {original_blob_name} {error}")
                         raise Exit(code=1)
+                    if old_blob is None:
+                        console.print(f"[red]Error porque el archivo actual es nulo:[/red] {original_blob_name} {error}")
+                        raise Exit(code=1)
+                    # Copy to new blob name
+                    try:
+                        new_blob = bucket.copy_blob(old_blob, bucket, nuevo_blob_name)
+                    except Exception as error:
+                        console.print(f"[red]Error al copiar al nuevo archivo:[/red] {nuevo_blob_name} {error}")
+                        raise Exit(code=1)
+                    # Delete the old blob
+                    try:
+                        old_blob.delete()
+                    except Exception as error:
+                        # If deletion fails, we should clean up the new blob
+                        try:
+                            new_blob.delete()
+                        except Exception:
+                            pass
+                        console.print(f"[red]Error al eliminar el archivo original:[/red] {original_blob_name} {error}")
+                        raise Exit(code=1)
+                    # Return public URL of the new blob
+                    digitalizacion.url = new_blob.public_url
                 # Cambiar el nombre del archivo en la base de datos
                 digitalizacion.archivo = nuevo_blob_name
                 # Hay cambios
