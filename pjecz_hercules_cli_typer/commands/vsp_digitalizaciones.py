@@ -256,10 +256,9 @@ def copiar(
     # Bucle por cada autoridad
     for autoridad in autoridades:
         # Definir el directorio en el bucket de origen
-        origen_dir = ""
+        origen_dir = autoridad.clave.lower()
         if config.VASPEC_DIR != "":
-            origen_dir = f"{config.VASPEC_DIR}/"
-        origen_dir = f"{origen_dir}{autoridad.clave.lower()}"
+            origen_dir = f"{config.VASPEC_DIR}/{origen_dir}"
 
         # Definir la ruta en el bucket de origen
         remoto_origen = f"{config.RCLONE_REMOTE_ORIGEN}:/{config.CLOUD_STORAGE_DEPOSITO_VASPEC}/{origen_dir}"
@@ -348,11 +347,11 @@ def copiar(
                     continue
 
                 # Definir el nuevo nombre del archivo a UUID.pdf
-                destino_directorio = f"{autoridad.clave}/{expediente_anio}"
+                destino_dir = f"{autoridad.clave}/{expediente_anio}/"  # Observe que termina en / porque es un directorio
 
                 # Ejecutar rclone para copiar el archivo al nuevo destino
                 remoto_destino = (
-                    f"{config.RCLONE_REMOTE_DESTINO}:/{config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES}/{destino_directorio}"
+                    f"{config.RCLONE_REMOTE_DESTINO}:/{config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES}/{destino_dir}"
                 )
                 if save:
                     console.print(f"Copiando [cyan]{origen_archivo}[/cyan] -> [green]{remoto_destino}[/green]")
@@ -364,7 +363,7 @@ def copiar(
                     console.print(f"Simulando [cyan]{origen_archivo}[/cyan] -> [green]{remoto_destino}[/green]")
 
                 # Definir el blob name (autoridad, año, archivo.pdf)
-                blob_name = f"{destino_directorio}/{archivo['Name']}"
+                blob_name = f"{destino_dir}{archivo['Name']}"  # Observe que no hay / porque destino_dir ya termina en /
 
                 # Definir la URL pública del archivo copiado
                 url_publica = f"https://storage.googleapis.com/{config.CLOUD_STORAGE_DEPOSITO_VSP_DIGITALIZACIONES}/{blob_name}"
