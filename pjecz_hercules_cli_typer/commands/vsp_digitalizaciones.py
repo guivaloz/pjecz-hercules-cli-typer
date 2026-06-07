@@ -167,6 +167,7 @@ def actualizar(
 
             # Por defecto, se asume que no hay cambios
             hay_cambios = False
+            cambios_list = []
 
             # Si es_uuid es falso, vamos a renombrar el archivo en el bucket
             if not es_uuid:
@@ -210,19 +211,23 @@ def actualizar(
                         raise Exit(code=1)
                     # Return public URL of the new blob
                     digitalizacion.url = new_blob.public_url
+                    cambios_list.append(f"URL: {new_blob.public_url}")
                 # Cambiar el nombre del archivo en la base de datos
                 digitalizacion.archivo = nuevo_blob_name
+                cambios_list.append(f"Archivo: {nuevo_blob_name}")
                 # Hay cambios
                 hay_cambios = True
 
             # Si NO tiene tamaño o si es diferente al tamaño del blob, se actualiza
             if not digitalizacion.tamano or digitalizacion.tamano != blob.size:
                 digitalizacion.tamano = blob.size if blob.size else None
+                cambios_list.append(f"Tamaño: {blob.size} bytes")
                 hay_cambios = True
 
             # Si NO tiene tiempo o si es diferente al tiempo de actualización del blob, se actualiza
             if not digitalizacion.tiempo or digitalizacion.tiempo != blob.updated:
                 digitalizacion.tiempo = blob.updated if blob.updated else None
+                cambios_list.append(f"Tiempo: {blob.updated}")
                 hay_cambios = True
 
             # Si hay cambios, se actualiza la base de datos
@@ -231,14 +236,16 @@ def actualizar(
                     db.add(digitalizacion)
                     db.commit()
                 contador_actualizados += 1
+                if guardar:
+                    msg = f"Se actualizaron {digitalizacion.autoridad.clave} {digitalizacion.expediente} {digitalizacion.descripcion} con cambios: {', '.join(cambios_list)}"
+                    bitacora.info(msg)
+                    console.print(f"[green]{msg}[/green]")
+                else:
+                    msg = f"Se podría actualizar {digitalizacion.autoridad.clave} {digitalizacion.expediente} {digitalizacion.descripcion} con cambios: {', '.join(cambios_list)}"
+                    bitacora.info(msg)
+                    console.print(f"[cyan]{msg}[/cyan]")
             else:
                 contador_sin_cambios += 1
-
-            # Enviar a la bitácora los cambios actualizados
-            if hay_cambios:
-                msg = f"Se actualizó {digitalizacion.autoridad.clave} {digitalizacion.expediente} {digitalizacion.descripcion}"
-                bitacora.info(msg)
-                console.print(f"[green]{msg}[/green]")
 
             # Agregar el reglón a la tabla
             tabla.add_row(
