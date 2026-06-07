@@ -225,10 +225,10 @@ def actualizar(
                 hay_cambios = True
 
             # Si NO tiene tiempo o si es diferente al tiempo de actualización del blob, se actualiza
-            if not digitalizacion.tiempo or digitalizacion.tiempo != blob.updated:
-                digitalizacion.tiempo = blob.updated if blob.updated else None
-                cambios_list.append(f"Tiempo: {blob.updated}")
-                hay_cambios = True
+            # if not digitalizacion.tiempo or digitalizacion.tiempo != blob.updated:
+            #     digitalizacion.tiempo = blob.updated if blob.updated else None
+            #     cambios_list.append(f"Tiempo: {blob.updated}")
+            #     hay_cambios = True
 
             # Si hay cambios, se actualiza la base de datos
             if hay_cambios:
