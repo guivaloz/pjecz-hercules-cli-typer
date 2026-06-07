@@ -38,7 +38,7 @@ app = Typer(help="VASPEC Digitalizaciones")
 def actualizar(
     autoridad_clave: str = "",
     guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar cambios en la base de datos")] = False,
-    tamano_cero: Annotated[bool, Option("--tamano-cero", "-0", help="Sólo actualizar los que su tamaño sea cero")] = False,
+    tamano_nulo: Annotated[bool, Option("--tamano-nulo", "-0", help="Sólo actualizar los que su tamaño sea nulo")] = False,
 ):
     """Actualizar las digitalizaciones para renombrar la URL pública a UUID, definir tamaño y tiempo de subida"""
     console = Console()
@@ -120,8 +120,8 @@ def actualizar(
                 VspDigitalizacion.estatus == "A",
             )
         )
-        if tamano_cero:
-            digitalizaciones = digitalizaciones.filter(VspDigitalizacion.tamano == 0)
+        if tamano_nulo:
+            digitalizaciones = digitalizaciones.filter(VspDigitalizacion.tamano == None)  # noqa: E711
         digitalizaciones = digitalizaciones.order_by(VspDigitalizacion.id).all()
 
         # Bucle por cada digitalización
