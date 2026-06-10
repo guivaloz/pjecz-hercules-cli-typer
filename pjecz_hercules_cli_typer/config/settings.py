@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     DB_NAME: str = "database"
     RCLONE_REMOTE_ORIGEN: str = ""
     RCLONE_REMOTE_DESTINO: str = ""
+    SAJI_MERCANTIL_API_KEY: str = ""
+    SAJI_MERCANTIL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES: str = ""
     SALT: str = "some_random_salt"
     SQLALCHEMY_DATABASE_URI: str = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     TZ: str = "America/Mexico_City"

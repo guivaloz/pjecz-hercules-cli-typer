@@ -35,8 +35,9 @@ class VspDigitalizacion(Base):
     archivo_uuid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), default=uuid.uuid4)
     archivo: Mapped[str] = mapped_column(String(256))
     url: Mapped[str] = mapped_column(String(512))
-    tamano: Mapped[Optional[int]]
-    tiempo: Mapped[Optional[datetime]]
+    tamano: Mapped[Optional[int]]  # Bytes
+    tiempo: Mapped[Optional[datetime]]  # Tiempo en el que fue subido a GCS
+    enviado: Mapped[Optional[datetime]]  # Tiempo en el que fue enviado a SAJI, si es nulo aun no ha sido enviado
 
     def __repr__(self):
         """Representación"""

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Annotated
 
 import pytz
+import requests
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 from openpyxl import Workbook
@@ -695,3 +696,200 @@ def exportar(autoridad_clave: str = ""):
         msg = "No se encontraron digitalizaciones para exportar. El archivo XLSX está vacío."
         bitacora.warning(msg)
         console.print(f"[yellow]{msg}[/yellow]")
+
+
+@app.command()
+def entregar(
+    autoridad_clave: str = "",
+    guardar: Annotated[bool, Option("--guardar", "-g", help="Enviar payloads y guardar tiempos")] = False,
+    no_enviadas: Annotated[bool, Option("--no-enviadas", "-0", help="Sólo enviar las que no hayan sido enviadas")] = False,
+):
+    """Entregar las digitalizaciones a SAJI"""
+    console = Console()
+    if guardar:
+        msg = "Entregar las digitalizaciones a SAJI"
+        bitacora.info(msg)
+        console.print(f"{msg}...")
+    else:
+        msg = "Revisando las digitalizaciones que se pudieran entregar a SAJI"
+        bitacora.info(msg)
+        console.print(f"{msg}...")
+
+    # Obtener configuración
+    config = get_settings()
+
+    # Validar que se haya configurado
+    if config.SAJI_MERCANTIL_API_KEY == "":
+        msg = "No se ha configurado SAJI_MERCANTIL_API_KEY"
+        bitacora.error(msg)
+        console.print(f"[red]{msg}[/red]")
+        raise Exit(code=1)
+
+    # Validar que se haya configurado
+    if config.SAJI_MERCANTIL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES == "":
+        msg = "No se ha configurado SAJI_MERCANTIL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES"
+        bitacora.error(msg)
+        console.print(f"[red]{msg}[/red]")
+        raise Exit(code=1)
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Si viene la autoridad_clave, consultarla
+    autoridades = []
+    if autoridad_clave != "":
+        autoridad = db.query(Autoridad).filter(Autoridad.clave == safe_clave(autoridad_clave)).first()
+        if autoridad is None:
+            msg = "Clave de autoridad inválida"
+            bitacora.error(msg)
+            console.print(f"[red]{msg}[/red]")
+            raise Exit(code=1)
+        autoridades.append(autoridad)
+    else:
+        # De lo contrario, consultar las autoridades donde es_vsp_digitalizaciones es True
+        autoridades = db.query(Autoridad).filter(Autoridad.es_vsp_digitalizaciones).order_by(Autoridad.clave).all()
+        if autoridades is None:
+            msg = "No se encontraron autoridades con digitalizaciones"
+            bitacora.warning(msg)
+            console.print(f"[yellow]{msg}[/yellow]")
+            raise Exit(code=1)
+
+    # Inicialiar contadores
+    enviados_contador = 0
+    insertados_contador = 0
+    omitidos_contador = 0
+
+    # Bucle por cada autoridad
+    for autoridad in autoridades:
+        # Si la autoridad NO es Mercantil, se omite
+
+        # Iniciamos el limit y el offset para segmentar las consultas y los envios
+        limit = 100
+        offset = 0
+
+        # Bucle por las consultas a vsp_digitalizaciones de la autoridad
+        while offset < limit:
+            vsp_digitalizaciones = (
+                db.query(VspDigitalizacion)
+                .join(Autoridad)
+                .filter(
+                    Autoridad.id == autoridad.id,
+                    VspDigitalizacion.estatus == "A",
+                )
+            )
+            if no_enviadas:
+                vsp_digitalizaciones = vsp_digitalizaciones.filter(VspDigitalizacion.enviado == None)  # noqa: E711
+            vsp_digitalizaciones = vsp_digitalizaciones.order_by(VspDigitalizacion.id).limit(limit).offset(offset).all()
+
+            # Inicializar el listado de digitalizaciones
+            digitalizaciones = []
+
+            # Bucle por cada vsp_digitalizacion
+            for vsp_digitalizacion in vsp_digitalizaciones:
+                digitalizaciones.append(
+                    {
+                        "autoridadClave": vsp_digitalizacion.autoridad.clave,
+                        "numeroExpediente": vsp_digitalizacion.expediente,
+                        "url": vsp_digitalizacion.url,
+                    }
+                )
+
+            # Definir el payload
+            payload = {"digitalizaciones": digitalizaciones}
+
+            # Enviar
+            if guardar:
+                try:
+                    respuesta = requests.post(config.SAJI_MERCANTIL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES, json=payload)
+                    respuesta.raise_for_status()
+                except requests.exceptions.ConnectionError:
+                    msg = "No hubo respuesta al tratar de enviar al SAJI Mercantil"
+                    bitacora.error(msg)
+                    console.print(f"[red]{msg}[/red]")
+                    raise Exit(code=1)
+                except requests.exceptions.HTTPError as error:
+                    msg = f"Error de estado {str(error)} al tratar de enviar al SAJI Mercantil"
+                    bitacora.error(msg)
+                    console.print(f"[red]{msg}[/red]")
+                    raise Exit(code=1)
+                except requests.exceptions.RequestException:
+                    msg = "Error desconocido al tratar de enviar al SAJI Mercantil"
+                    bitacora.error(msg)
+                    console.print(f"[red]{msg}[/red]")
+                    raise Exit(code=1)
+                try:
+                    datos = respuesta.json()
+                except requests.exceptions.JSONDecodeError:
+                    msg = "La respuesta no es JSON al enviar al SAJI Mercantil"
+                    bitacora.error(msg)
+                    console.print(f"[red]{msg}[/red]")
+                    raise Exit(code=1)
+                if "success" not in datos:
+                    msg = "La respuesta no tiene success al enviar al SAJI Mercantil"
+                    bitacora.error(msg)
+                    console.print(f"[red]{msg}[/red]")
+                    raise Exit(code=1)
+                if datos["success"] is False:
+                    if "message" in datos:
+                        msg = f"Falló al enviar al SAJI Mercantil con este mensaje: {datos['message']}"
+                    bitacora.error(msg)
+                    console.print(f"[red]{msg}[/red]")
+                    raise Exit(code=1)
+
+                # Procesar la respuesta
+                if datos.get("totalRecibidos"):
+                    msg = f"Total recibidos: {datos['totalRecibidos']}"
+                    bitacora.info(msg)
+                    console.print(f"[cyan]{msg}[/cyan]")
+                    try:
+                        enviados_contador += int(datos["totalRecibidos"])
+                    except ValueError:
+                        pass
+                if datos.get("totalInsertados"):
+                    msg = f"Total recibidos: {datos['totalInsertados']}"
+                    bitacora.info(msg)
+                    console.print(f"[green]{msg}[/green]")
+                    try:
+                        insertados_contador += int(datos["totalInsertados"])
+                    except ValueError:
+                        pass
+                if datos.get("totalOmitidos"):
+                    msg = f"Total recibidos: {datos['totalOmitidos']}"
+                    bitacora.warning(msg)
+                    console.print(f"[yellow]{msg}[/yellow]")
+                    try:
+                        omitidos_contador += int(datos["totalOmitidos"])
+                    except ValueError:
+                        pass
+                if "errores" in datos and len(datos["errores"]) > 1:
+                    for error in datos["errores"]:
+                        bitacora.warning(error)
+                        console.print(f"[yellow]{error}[/yellow]")
+
+            # Incrementar contador
+            enviados_contador += len(digitalizaciones)
+
+            # Incrementar el offset
+            offset += limit
+
+    # Mensaje de éxito
+    if enviados_contador:
+        msg = f"Se enviaron {enviados_contador} digitalizaciones."
+        bitacora.info(msg)
+        console.print(f"[bold green]{msg}[/bold green]")
+    else:
+        msg = "No se enviaron digitalizaciones."
+        bitacora.warning(msg)
+        console.print(f"[yellow]{msg}[/yellow]")
+    if insertados_contador:
+        msg = f"Se insertaron {insertados_contador} digitalizaciones."
+        bitacora.info(msg)
+        console.print(f"[bold green]{msg}[/bold green]")
+    else:
+        msg = "No se insertaron digitalizaciones."
+        bitacora.warning(msg)
+        console.print(f"[yellow]{msg}[/yellow]")
+    if omitidos_contador:
+        msg = f"Se omitieron {omitidos_contador} digitalizaciones."
+        bitacora.warning(msg)
+        console.print(f"[bold yellow]{msg}[/bold yellow]")
