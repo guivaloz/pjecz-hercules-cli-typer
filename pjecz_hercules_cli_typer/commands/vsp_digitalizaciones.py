@@ -35,6 +35,8 @@ bitacora.addHandler(empunadura)
 
 app = Typer(help="VASPEC Digitalizaciones")
 
+MATERIAS_ENVIAR_PERMITIDAS = ["MER", "LET"]
+
 
 @app.command()
 def actualizar(
@@ -764,7 +766,7 @@ def entregar(
     # Bucle por cada autoridad
     for autoridad in autoridades:
         # Si la autoridad NO es Mercantil, se omite
-        if autoridad.materia.clave != "MER":
+        if autoridad.materia.clave not in MATERIAS_ENVIAR_PERMITIDAS:
             msg = f"Se omite la autoridad {autoridad.clave} porque aun no se pueden enviar a su materia"
             bitacora.info(msg)
             console.print(f"[blue]{msg}[/blue]")
