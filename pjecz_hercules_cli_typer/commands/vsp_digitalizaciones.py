@@ -861,12 +861,14 @@ def entregar(
                     bitacora.error(msg)
                     console.print(f"[red]{msg}[/red]")
                     raise Exit(code=1)
+
+                # Si "No se insertó ningún registro" el success es False, se pasa al siguiente conjunto de digitalizaciones
                 if datos["success"] is False:
                     if "message" in datos:
                         msg = f"Falló al enviar al SAJI Mercantil con este mensaje: {datos['message']}"
-                    bitacora.error(msg)
-                    console.print(f"[red]{msg}[/red]")
-                    raise Exit(code=1)
+                    bitacora.warning(msg)
+                    console.print(f"[yellow]{msg}[/yellow]")
+                    continue
 
                 # Procesar la respuesta
                 if datos.get("totalRecibidos"):
