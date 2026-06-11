@@ -865,9 +865,12 @@ def entregar(
                 # Si "No se insertó ningún registro" el success es False, se pasa al siguiente conjunto de digitalizaciones
                 if datos["success"] is False:
                     if "message" in datos:
-                        msg = f"Falló al enviar al SAJI Mercantil con este mensaje: {datos['message']}"
+                        msg = f"El success es False al enviar al SAJI Mercantil con este mensaje: {datos['message']}"
+                    else:
+                        msg = "El success es False al enviar al SAJI Mercantil"
                     bitacora.warning(msg)
                     console.print(f"[yellow]{msg}[/yellow]")
+                    offset += limit  # Incrementar el offset
                     continue
 
                 # Procesar la respuesta
