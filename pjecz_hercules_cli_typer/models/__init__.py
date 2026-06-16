@@ -2,20 +2,20 @@
 Import all models into this package
 """
 
-from .autoridades import Autoridad
-from .distritos import Distrito
-from .edictos import Edicto
-from .fin_vales import FinVale
-from .inv_custodias import InvCustodia
-from .inv_equipos import InvEquipo
-from .inv_marcas import InvMarca
-from .inv_modelos import InvModelo
-from .listas_de_acuerdos import ListaDeAcuerdo
-from .materias import Materia
-from .materias_tipos_juicios import MateriaTipoJuicio
-from .ofi_documentos import OfiDocumento
-from .roles import Rol
-from .sentencias import Sentencia
-from .soportes_tickets import SoporteTicket
-from .usuarios import Usuario
-from .usuarios_roles import UsuarioRol
+from pjecz_hercules_cli_typer.models.autoridades import Autoridad
+from pjecz_hercules_cli_typer.models.distritos import Distrito
+from pjecz_hercules_cli_typer.models.edictos import Edicto
+from pjecz_hercules_cli_typer.models.fin_vales import FinVale
+from pjecz_hercules_cli_typer.models.inv_custodias import InvCustodia
+from pjecz_hercules_cli_typer.models.inv_equipos import InvEquipo
+from pjecz_hercules_cli_typer.models.inv_marcas import InvMarca
+from pjecz_hercules_cli_typer.models.inv_modelos import InvModelo
+from pjecz_hercules_cli_typer.models.listas_de_acuerdos import ListaDeAcuerdo
+from pjecz_hercules_cli_typer.models.materias import Materia
+from pjecz_hercules_cli_typer.models.materias_tipos_juicios import MateriaTipoJuicio
+from pjecz_hercules_cli_typer.models.ofi_documentos import OfiDocumento
+from pjecz_hercules_cli_typer.models.roles import Rol
+from pjecz_hercules_cli_typer.models.sentencias import Sentencia
+from pjecz_hercules_cli_typer.models.soportes_tickets import SoporteTicket
+from pjecz_hercules_cli_typer.models.usuarios import Usuario
+from pjecz_hercules_cli_typer.models.usuarios_roles import UsuarioRol

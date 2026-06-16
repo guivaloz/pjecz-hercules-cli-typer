@@ -42,7 +42,8 @@ MATERIAS_ENVIAR_PERMITIDAS = ["MER", "LET"]
 def actualizar(
     autoridad_clave: str = "",
     guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar cambios en la base de datos")] = False,
-    tamano_nulo: Annotated[bool, Option("--tamano-nulo", "-0", help="Sólo actualizar los que su tamaño sea nulo")] = False,
+    tamano_nulo: Annotated[bool, Option("--tamano-nulo", "-s", help="Sólo actualizar los que su tamaño sea nulo")] = False,
+    tiempo_nulo: Annotated[bool, Option("--tiempo-nulo", "-t", help="Sólo actualizar los que su tiempo sea nulo")] = False,
 ):
     """Actualizar las digitalizaciones para renombrar la URL pública a UUID, definir tamaño y tiempo de subida"""
     console = Console()
@@ -126,6 +127,8 @@ def actualizar(
         )
         if tamano_nulo:
             digitalizaciones = digitalizaciones.filter(VspDigitalizacion.tamano == None)  # noqa: E711
+        if tiempo_nulo:
+            digitalizaciones = digitalizaciones.filter(VspDigitalizacion.tiempo == None)  # noqa: E711
         digitalizaciones = digitalizaciones.order_by(VspDigitalizacion.id).all()
 
         # Bucle por cada digitalización
@@ -222,17 +225,17 @@ def actualizar(
                 # Hay cambios
                 hay_cambios = True
 
-            # Si NO tiene tamaño o si es diferente al tamaño del blob, se actualiza
-            if not digitalizacion.tamano or digitalizacion.tamano != blob.size:
-                digitalizacion.tamano = blob.size if blob.size else None
+            # Si NO tiene tamaño, se actualiza
+            if digitalizacion.tamano is None and blob.size is not None:
+                digitalizacion.tamano = blob.size
                 cambios_list.append(f"Tamaño: {blob.size} bytes")
                 hay_cambios = True
 
-            # Si NO tiene tiempo o si es diferente al tiempo de actualización del blob, se actualiza
-            # if not digitalizacion.tiempo or digitalizacion.tiempo != blob.updated:
-            #     digitalizacion.tiempo = blob.updated if blob.updated else None
-            #     cambios_list.append(f"Tiempo: {blob.updated}")
-            #     hay_cambios = True
+            # Si NO tiene tiempo, se actualiza
+            if digitalizacion.tiempo is None and blob.updated is not None:
+                digitalizacion.tiempo = blob.updated
+                cambios_list.append(f"Tiempo: {blob.updated}")
+                hay_cambios = True
 
             # Si hay cambios, se actualiza la base de datos
             if hay_cambios:
@@ -240,12 +243,13 @@ def actualizar(
                     db.add(digitalizacion)
                     db.commit()
                 contador_actualizados += 1
+                dig_str = f"{digitalizacion.autoridad.clave} {digitalizacion.expediente} {digitalizacion.descripcion}"
                 if guardar:
-                    msg = f"Se actualizaron {digitalizacion.autoridad.clave} {digitalizacion.expediente} {digitalizacion.descripcion} con cambios: {', '.join(cambios_list)}"
+                    msg = f"Se actualizó {dig_str} con: {', '.join(cambios_list)}"
                     bitacora.info(msg)
                     console.print(f"[green]{msg}[/green]")
                 else:
-                    msg = f"Se podría actualizar {digitalizacion.autoridad.clave} {digitalizacion.expediente} {digitalizacion.descripcion} con cambios: {', '.join(cambios_list)}"
+                    msg = f"Podría actualizar {dig_str} con: {', '.join(cambios_list)}"
                     bitacora.info(msg)
                     console.print(f"[cyan]{msg}[/cyan]")
             else:
