@@ -619,7 +619,7 @@ def exportar(autoridad_clave: str = ""):
     # Inicializar la base de datos
     db = get_database()
 
-    # Preparar consulta base
+    # Iniciar la consulta
     stmt = select(
         Autoridad.clave,
         VspDigitalizacion.expediente,
@@ -628,11 +628,12 @@ def exportar(autoridad_clave: str = ""):
         VspDigitalizacion.descripcion,
         VspDigitalizacion.archivo,
         VspDigitalizacion.url,
+        VspDigitalizacion.tiempo,
     ).join(
         Autoridad,
     )
 
-    # Si viene la autoridad_clave
+    # Si viene la autoridad_clave, filtrar por la autoridad
     if autoridad_clave != "":
         autoridad_clave = safe_clave(autoridad_clave)
         if autoridad_clave == "":
@@ -642,7 +643,7 @@ def exportar(autoridad_clave: str = ""):
             raise Exit(code=1)
         stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
 
-    # Solo los que tengan estatus A
+    # Filtrar solo los que tengan estatus A
     stmt = stmt.filter(VspDigitalizacion.estatus == "A")
 
     # Ordenar por clave de autoridad, año de expediente, número de expediente y descripción
@@ -663,7 +664,18 @@ def exportar(autoridad_clave: str = ""):
         raise Exit(code=1)
 
     # Agregar la fila con las cabeceras de las columnas
-    hoja.append(["Autoridad clave", "Expediente", "Año de expediente", "Número de expediente", "Descripción", "Archivo", "URL"])
+    hoja.append(
+        [
+            "Autoridad clave",
+            "Expediente",
+            "Año de expediente",
+            "Número de expediente",
+            "Descripción",
+            "Archivo",
+            "URL",
+            "Subido a GCS",
+        ]
+    )
 
     # Agregar los datos de las digitalizaciones
     contador = 0
@@ -677,6 +689,7 @@ def exportar(autoridad_clave: str = ""):
                 item.descripcion,
                 item.archivo,
                 item.url,
+                item.tiempo,
             ]
         )
         contador += 1
