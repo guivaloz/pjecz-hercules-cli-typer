@@ -26,12 +26,12 @@ app = Typer(help="Edictos")
 
 
 @app.command()
-def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit: int = 10):
+def consultar(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit: int = 100):
     """Consultar edictos"""
     console = Console()
     console.print("Consultando edictos...")
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Si viene edicto_id, consultar un edicto específico
@@ -52,15 +52,16 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
             )
         )
         edicto = db.execute(stmt).first()
+        if edicto is None:
+            console.print(f"[yellow]No se encontró el edicto con ID {edicto_id}[/yellow]")
+            raise Exit(code=1)
         if edicto is not None:
             console.print(f"ID: {edicto.id}")
             console.print(f"Autoridad: {edicto.autoridad.clave}")
             console.print(f"Expediente: {edicto.expediente}")
             console.print(f"Descripción: {edicto.descripcion}")
             console.print(f"Estatus: {edicto.estatus}")
-        else:
-            console.print(f"No se encontró el edicto con ID {edicto_id}")
-        return
+            return Exit(code=0)
 
     # Preparar la consulta base
     stmt = select(
@@ -94,16 +95,16 @@ def query(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit:
 
 
 @app.command()
-def update(
+def actualizar(
     autoridad_clave: str = "",
     offset: int = 0,
-    limit: int = 10,
-    all: Annotated[bool, Option("--all", "-a", help="Todos los registros")] = False,
-    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+    limit: int = 100,
+    todos: Annotated[bool, Option("--todos", "-t", help="Todos los registros")] = False,
+    guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar en la base de datos")] = False,
 ):
     """Actualizar los edictos"""
     console = Console()
-    if save:
+    if guardar:
         console.print("Actualizando edictos...")
     else:
         console.print("Mostrando los cambios que se podrían hacer...")
@@ -117,7 +118,7 @@ def update(
         console.print("[red]No se ha configurado el depósito de edictos[/red]")
         raise Exit(code=1)
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Si se especificó una clave de autoridad
@@ -212,8 +213,8 @@ def update(
             if style != "green":
                 total_sin_cambios += 1
                 continue
-            # Si save es verdadero, mover el blob en Google Cloud Storage y actualizar el URL en la base de datos
-            if save:
+            # Si guardar es verdadero, mover el blob en Google Cloud Storage y actualizar el URL en la base de datos
+            if guardar:
                 try:
                     update_blob_name_in_gcs(
                         bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
@@ -233,7 +234,7 @@ def update(
         # Mostrar la tabla
         console.print(tabla)
         # Si no se especificó la opción --all, salir del ciclo
-        if not all:
+        if not todos:
             break
         # Incrementar el offset
         offset += limit
