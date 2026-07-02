@@ -15,12 +15,12 @@ app = Typer(help="Materias")
 
 
 @app.command()
-def query(clave: str = "", offset: int = 0, limit: int = 10):
+def consultar(clave: str = "", offset: int = 0, limit: int = 100):
     """Consultar materias"""
     console = Console()
     console.print("Consultando materias...")
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Si viene la clave

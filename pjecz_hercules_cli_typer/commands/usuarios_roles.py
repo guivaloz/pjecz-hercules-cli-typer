@@ -18,12 +18,12 @@ app = Typer(help="Usuarios-Roles")
 
 
 @app.command()
-def query(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = "", offset: int = 0, limit: int = 10):
+def consultar(autoridad_clave: str = "", rol_nombre: str = "", usuario_email: str = "", offset: int = 0, limit: int = 100):
     """Consultar usuarios_roles"""
     console = Console()
     console.print("Consultando usuarios_roles...")
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Preparar consulta base

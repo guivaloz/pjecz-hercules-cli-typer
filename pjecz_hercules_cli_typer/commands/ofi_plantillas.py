@@ -50,12 +50,12 @@ GENERICO = """
 
 
 @app.command()
-def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str = "", offset: int = 0, limit: int = 10):
-    """Consultar oficios plantillas"""
+def consultar(autoridad_clave: str = "", descripcion: str = "", usuario_email: str = "", offset: int = 0, limit: int = 100):
+    """Consultar plantillas"""
     console = Console()
     console.print("Consultando oficios plantillas...")
 
-    # Consultar
+    # Inicializar la base de datos
     db = get_database()
 
     # Preparar consulta base
@@ -128,16 +128,16 @@ def query(autoridad_clave: str = "", descripcion: str = "", usuario_email: str =
 
 
 @app.command()
-def insert(
+def insertar(
     autoridad_clave: str = "",
     usuario_email: str = "",
     offset: int = 0,
-    limit: int = 10,
-    save: Annotated[bool, Option("--save", "-s", help="Guardar cambios en la base de datos")] = False,
+    limit: int = 100,
+    guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar en la base de datos")] = False,
 ):
     """Crear una plantilla genérica para cada usuario con rol OFICIOS ESCRITOR u OFICIOS FIRMANTE"""
     console = Console()
-    if save:
+    if guardar:
         console.print("Creando plantillas genéricas y guardando en la base de datos...")
     else:
         console.print("Mostrando los cambios que se podrían hacer...")
@@ -243,7 +243,7 @@ def insert(
             contenido_md=None,
             contenido_sfdt=None,
         )
-        if save:
+        if guardar:
             db.add(ofi_plantilla)
             db.commit()
 
@@ -257,7 +257,7 @@ def insert(
             ofi_plantilla.destinatarios_emails or "",
             "Sí" if ofi_plantilla.esta_archivado else "",
             "Sí" if ofi_plantilla.esta_compartida else "",
-            style="green" if save else "white",
+            style="green" if guardar else "white",
         )
 
     # Mostrar tabla

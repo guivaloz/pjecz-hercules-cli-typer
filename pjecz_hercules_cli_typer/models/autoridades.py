@@ -2,7 +2,7 @@
 Autoridades
 """
 
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -30,6 +30,7 @@ class Autoridad(Base):
     descripcion: Mapped[str] = mapped_column(String(256))
     descripcion_corta: Mapped[str] = mapped_column(String(64))
     directorio_edictos: Mapped[str] = mapped_column(String(256))
+    directorio_estrados: Mapped[str] = mapped_column(String(256))
     directorio_glosas: Mapped[str] = mapped_column(String(256))
     directorio_listas_de_acuerdos: Mapped[str] = mapped_column(String(256))
     directorio_sentencias: Mapped[str] = mapped_column(String(256))
@@ -42,6 +43,12 @@ class Autoridad(Base):
     es_organo_especializado: Mapped[bool] = mapped_column(default=False)
     es_revisor_escrituras: Mapped[bool] = mapped_column(default=False)
     es_vsp_digitalizaciones: Mapped[bool] = mapped_column(default=False)
+    pagina_cabecera_url: Mapped[Optional[str]]
+    pagina_pie_url: Mapped[Optional[str]]
+    tabla_renglon_color: Mapped[Optional[str]]
+    tablero_icono: Mapped[Optional[str]]
+    destinatarios_emails: Mapped[Optional[str]] = mapped_column(String(1024))
+    con_copias_emails: Mapped[Optional[str]] = mapped_column(String(1024))
 
     # Hijos
     edictos: Mapped[List["Edicto"]] = relationship("Edicto", back_populates="autoridad")

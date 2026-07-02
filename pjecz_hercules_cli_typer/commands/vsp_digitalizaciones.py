@@ -41,7 +41,7 @@ MATERIAS_ENVIAR_PERMITIDAS = ["MER", "LET"]
 @app.command()
 def actualizar(
     autoridad_clave: str = "",
-    guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar cambios en la base de datos")] = False,
+    guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar en la base de datos")] = False,
     tamano_nulo: Annotated[bool, Option("--tamano-nulo", "-s", help="Sólo actualizar los que su tamaño sea nulo")] = False,
     tiempo_nulo: Annotated[bool, Option("--tiempo-nulo", "-t", help="Sólo actualizar los que su tiempo sea nulo")] = False,
 ):
@@ -300,7 +300,7 @@ def actualizar(
 @app.command()
 def copiar(
     autoridad_clave: str = "",
-    guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar cambios en la base de datos")] = False,
+    guardar: Annotated[bool, Option("--guardar", "-g", help="Guardar en la base de datos")] = False,
 ):
     """Copiar las nuevas digitalizaciones del bucket original al bucket final con rclone"""
     console = Console()
@@ -541,12 +541,10 @@ def copiar(
 
 
 @app.command()
-def consultar(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 10):
-    """Consultar la tabla vsp_digitalizaciones"""
+def consultar(autoridad_clave: str = "", descripcion: str = "", offset: int = 0, limit: int = 100):
+    """Consultar digitalizaciones"""
     console = Console()
-    msg = "Consultando digitalizaciones"
-    bitacora.info(msg)
-    console.print(f"{msg}...")
+    console.print("Consultando digitalizaciones...")
 
     # Inicializar la base de datos
     db = get_database()
@@ -566,9 +564,7 @@ def consultar(autoridad_clave: str = "", descripcion: str = "", offset: int = 0,
     if autoridad_clave != "":
         autoridad_clave = safe_clave(autoridad_clave)
         if autoridad_clave == "":
-            msg = "Clave de autoridad inválida"
-            bitacora.error(msg)
-            console.print(f"[red]{msg}[/red]")
+            console.print("[red]Clave de autoridad inválida[/red]")
             raise Exit(code=1)
         stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
 
@@ -576,9 +572,7 @@ def consultar(autoridad_clave: str = "", descripcion: str = "", offset: int = 0,
     if descripcion != "":
         descripcion = safe_string(descripcion)
         if descripcion == "":
-            msg = "Descripción inválida"
-            bitacora.error(msg)
-            console.print(f"[red]{msg}[/red]")
+            console.print("[red]Descripción inválida[/red]")
             raise Exit(code=1)
         stmt = stmt.filter(VspDigitalizacion.descripcion.contains(descripcion))
 
@@ -721,7 +715,7 @@ def exportar(autoridad_clave: str = ""):
 @app.command()
 def entregar(
     autoridad_clave: str = "",
-    guardar: Annotated[bool, Option("--guardar", "-g", help="Enviar payloads y guardar tiempos")] = False,
+    guardar: Annotated[bool, Option("--guardar", "-g", help="Enviar a la API y guardar en la base de datos")] = False,
     no_enviadas: Annotated[bool, Option("--no-enviadas", "-0", help="Sólo enviar las que no hayan sido enviadas")] = False,
 ):
     """Entregar las digitalizaciones a SAJI"""
