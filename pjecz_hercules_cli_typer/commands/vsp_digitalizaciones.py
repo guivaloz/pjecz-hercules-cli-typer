@@ -888,7 +888,7 @@ def entregar(
 
                 # Procesar la respuesta
                 if datos.get("totalRecibidos"):
-                    msg = f"Total recibidos: {datos['totalRecibidos']}"
+                    msg = f"Respuesta con el total de recibidos: {datos['totalRecibidos']}"
                     bitacora.info(msg)
                     console.print(f"[cyan]{msg}[/cyan]")
                     try:
@@ -896,7 +896,7 @@ def entregar(
                     except ValueError:
                         pass
                 if datos.get("totalInsertados"):
-                    msg = f"Total recibidos: {datos['totalInsertados']}"
+                    msg = f"Respuesta con el total de insertados: {datos['totalInsertados']}"
                     bitacora.info(msg)
                     console.print(f"[green]{msg}[/green]")
                     try:
@@ -904,7 +904,7 @@ def entregar(
                     except ValueError:
                         pass
                 if datos.get("totalOmitidos"):
-                    msg = f"Total recibidos: {datos['totalOmitidos']}"
+                    msg = f"Respuesta con el total de omitidos: {datos['totalOmitidos']}"
                     bitacora.warning(msg)
                     console.print(f"[yellow]{msg}[/yellow]")
                     try:
