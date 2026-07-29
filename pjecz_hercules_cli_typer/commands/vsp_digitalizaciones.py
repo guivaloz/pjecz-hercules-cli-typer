@@ -518,7 +518,8 @@ def copiar(
                 contador_copiados += 1
 
     # Mostrar tabla
-    console.print(tabla)
+    if contador_copiados or contador_encontrados:
+        console.print(tabla)
 
     if guardar:
         if contador_copiados:
@@ -913,8 +914,8 @@ def entregar(
                         pass
 
                 # Procesar errores
+                expedientes_omitidos = []
                 if "errores" in datos and len(datos["errores"]) > 1:
-                    expedientes_omitidos = []  # Acumular los expedientes omitidos
                     for error in datos["errores"]:
                         bitacora.warning(error)
                         console.print(f"[yellow]{error}[/yellow]")
