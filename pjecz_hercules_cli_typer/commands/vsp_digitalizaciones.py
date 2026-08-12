@@ -35,7 +35,9 @@ bitacora.addHandler(empunadura)
 
 app = Typer(help="VASPEC Digitalizaciones")
 
-MATERIAS_ENVIAR_PERMITIDAS = ["MER", "LET"]
+MATERIAS_ENVIAR_PERMITIDAS = ["LAB", "LET", "MER"]  # Claves de las materias
+MATERIAS_ENVIAR_MERCANTIL = ["LET", "MER"]  # Claves de las materias
+MATERIAS_ENVIAR_LABORAL = ["LAB"]  # Claves de las materias
 
 
 @app.command()
@@ -723,16 +725,28 @@ def entregar(
     console = Console()
     if guardar:
         msg = "Entregar las digitalizaciones a SAJI."
-        bitacora.info(msg)
-        console.print(msg)
     else:
         msg = "Probando las digitalizaciones que se pudieran entregar a SAJI."
-        bitacora.info(msg)
-        console.print(msg)
+    bitacora.info(msg)
+    console.print(msg)
 
     # Obtener configuración
     config = get_settings()
     timezone = pytz.timezone(config.TZ)
+
+    # Validar que se haya configurado
+    if config.SAJI_LABORAL_API_KEY == "":
+        msg = "No se ha configurado SAJI_LABORAL_API_KEY"
+        bitacora.error(msg)
+        console.print(f"[red]{msg}[/red]")
+        raise Exit(code=1)
+
+    # Validar que se haya configurado
+    if config.SAJI_LABORAL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES == "":
+        msg = "No se ha configurado SAJI_LABORAL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES"
+        bitacora.error(msg)
+        console.print(f"[red]{msg}[/red]")
+        raise Exit(code=1)
 
     # Validar que se haya configurado
     if config.SAJI_MERCANTIL_API_KEY == "":
@@ -777,9 +791,20 @@ def entregar(
 
     # Bucle por cada autoridad
     for autoridad in autoridades:
-        # Si la autoridad NO es Mercantil, se omite
+        # Si la autoridad NO es permitida, se omite
         if autoridad.materia.clave not in MATERIAS_ENVIAR_PERMITIDAS:
             msg = f"Se omite la autoridad {autoridad.clave} porque aun no se pueden enviar a su materia"
+            bitacora.info(msg)
+            console.print(f"[blue]{msg}[/blue]")
+            continue
+
+        # Definir la URL de la API según la materia
+        if autoridad.materia.clave in MATERIAS_ENVIAR_LABORAL:
+            url = config.SAJI_LABORAL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES
+        elif autoridad.materia.clave in MATERIAS_ENVIAR_MERCANTIL:
+            url = config.SAJI_MERCANTIL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES
+        else:
+            msg = f"Materia {autoridad.materia.clave} no soportada para enviar digitalizaciones"
             bitacora.info(msg)
             console.print(f"[blue]{msg}[/blue]")
             continue
@@ -842,7 +867,7 @@ def entregar(
             if guardar:
                 try:
                     respuesta = requests.post(
-                        url=config.SAJI_MERCANTIL_EXPEDIENTE_REGISTRAR_DIGITALIZACIONES,
+                        url=url,
                         json=payload,
                         headers={"X-Api-Key": config.SAJI_MERCANTIL_API_KEY},
                         timeout=config.SAJI_MERCANTIL_TIMEOUT,
