@@ -212,13 +212,9 @@ def check_file_exists_from_gcs(bucket_name: str, blob_name: str) -> bool:
     except NotFound as error:
         raise BucketNotFoundError("Bucket no encontrado") from error
 
-    # Get file
-    blob = bucket.get_blob(blob_name)
-    if blob is None:
-        return False
-
     # Return True if file exists
-    return True
+    blob = bucket.blob(blob_name)
+    return blob.exists()
 
 
 def get_public_url_from_gcs(bucket_name: str, blob_name: str) -> str:
