@@ -6,6 +6,7 @@ from typing import Annotated
 
 from hashids import Hashids
 from rich.console import Console
+from rich.progress import Progress
 from rich.table import Table
 from sqlalchemy import select
 from typer import Exit, Option, Typer
@@ -26,7 +27,7 @@ app = Typer(help="Edictos")
 
 
 @app.command()
-def consultar(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit: int = 100):
+def consultar(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, limit: int = 40):
     """Consultar edictos"""
     console = Console()
     console.print("Consultando edictos...")
@@ -72,9 +73,13 @@ def consultar(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, li
         Edicto.estatus,
     ).join(
         Autoridad,
+    ).offset(
+        offset,
+    ).limit(
+        limit,
     )
 
-    # Si viene autoridad_clave, consultar los edictos de esa autoridad
+    # Si viene autoridad_clave, filtrar los edictos por esa autoridad
     if autoridad_clave != "":
         autoridad_clave = safe_clave(autoridad_clave)
         if autoridad_clave == "":
@@ -90,8 +95,108 @@ def consultar(edicto_id: int = 0, autoridad_clave: str = "", offset: int = 0, li
     tabla.add_column("Descripción", header_style="green")
     tabla.add_column("Estatus", header_style="green")
     for item in db.execute(stmt):
-        tabla.add_row(str(item.id), item.autoridad.clave, item.expediente, item.descripcion, item.estatus)
+        tabla.add_row(str(item.id), item.clave, item.expediente, item.descripcion, item.estatus)
     console.print(tabla)
+
+    # Consultar la cantidad total de edictos
+    if autoridad_clave != "":
+        total = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).count()
+    else:
+        total = db.query(Edicto).count()
+    console.print(f"[green]Total de edictos: {total}[/green]")
+
+
+@app.command()
+def validar(autoridad_clave: str = "", offset: int = 0, limit: int = 40):
+    """Validar edictos, en particular que el url apunte a un recurso que exista en el depósito de edictos"""
+    console = Console()
+    console.print("Validando edictos...")
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Obtener configuración
+    settings = get_settings()
+
+    # Si viene autoridad_clave
+    if autoridad_clave != "":
+        # Validar la clave de autoridad
+        autoridad_clave = safe_clave(autoridad_clave)
+        if autoridad_clave == "":
+            console.print("[red]Clave inválida[/red]")
+            raise Exit(code=1)
+        # Validar que exista la autoridad
+        autoridad = db.query(Autoridad).filter(Autoridad.clave == autoridad_clave).first()
+        if autoridad is None:
+            console.print(f"[red]No se encontró la autoridad con clave {autoridad_clave}[/red]")
+            raise Exit(code=1)
+
+    # Consultar la cantidad total de edictos
+    if autoridad_clave != "":
+        total = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).count()
+    else:
+        total = db.query(Edicto).count()
+
+    # Preparar la consulta base
+    stmt = select(
+        Edicto.id,
+        Autoridad.clave,
+        Edicto.expediente,
+        Edicto.url,
+        Edicto.estatus,
+    ).join(
+        Autoridad,
+    ).offset(
+        offset,
+    ).limit(
+        limit,
+    ).order_by(
+        Edicto.id,
+    )
+
+    # Si viene autoridad_clave, filtrar los edictos por esa autoridad
+    if autoridad_clave != "":
+        stmt = stmt.where(Autoridad.clave == autoridad_clave)
+
+    # Mostrar mensaje de que se están validando los edictos
+    # console.print(f"[green]Validando {limit} edictos de la autoridad {autoridad_clave}...[/green]")
+
+    # Preparar la tabla
+    tabla = Table(title=f"Edictos de la autoridad {autoridad_clave}")
+    tabla.add_column("ID", header_style="green", no_wrap=True)
+    tabla.add_column("Autoridad", header_style="green")
+    tabla.add_column("Expediente", header_style="green")
+    tabla.add_column("URL", header_style="green")
+    tabla.add_column("Estatus", header_style="green")
+    tabla.add_column("Válido", header_style="white")
+
+    # Bucle con la barra de progreso
+    with Progress() as progress:
+        task = progress.add_task(f"Validando {limit} edictos de la autoridad {autoridad_clave}", total=limit)
+        for item in db.execute(stmt):
+            # Validar que el url apunte a un recurso que exista en el depósito de edictos
+            valido = False
+            try:
+                valido = check_file_exists_from_gcs(
+                    bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                    blob_name=get_blob_name_from_url(item.url),
+                )
+            except Exception as error:
+                console.print(f"[red]Error al validar el edicto {item.id}: {error}[/red]")
+                continue
+            # Agregar renglon a la tabla
+            if valido:
+                tabla.add_row(str(item.id), item.clave, item.expediente, item.url, item.estatus, "[green]Sí[/green]")
+            else:
+                tabla.add_row(str(item.id), item.clave, item.expediente, item.url, item.estatus, "[red]No[/red]")
+            # Actualizar la barra de progreso
+            progress.update(task, advance=1)
+
+    # Mostrar la tabla
+    console.print(tabla)
+
+    # Mostrar la cantidad total de edictos
+    console.print(f"[green]Total de edictos: {total}[/green]")
 
 
 @app.command()
