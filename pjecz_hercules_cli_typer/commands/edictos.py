@@ -124,6 +124,7 @@ def validar(autoridad_clave: str = "", offset: int = 0, limit: int = 40, loop: b
     settings = get_settings()
 
     # Si viene autoridad_clave
+    autoridad = None
     if autoridad_clave != "":
         # Validar la clave de autoridad
         autoridad_clave = safe_clave(autoridad_clave)
@@ -144,57 +145,45 @@ def validar(autoridad_clave: str = "", offset: int = 0, limit: int = 40, loop: b
 
     # Comenzar un bucle infinito donde se va incrementando el offset hasta que no haya más edictos, si loop es True
     while True:
-        # Preparar la consulta base
-        stmt = select(
-            Edicto.id,
-            Autoridad.clave,
-            Edicto.expediente,
-            Edicto.url,
-            Edicto.estatus,
-        ).join(
-            Autoridad,
-        ).offset(
-            offset,
-        ).limit(
-            limit,
-        ).order_by(
-            Edicto.id,
-        )
+        edictos = db.query(Edicto)
 
         # Si viene autoridad_clave, filtrar los edictos por esa autoridad
-        if autoridad_clave != "":
-            stmt = stmt.where(Autoridad.clave == autoridad_clave)
+        if autoridad is not None:
+            edictos = edictos.filter(Edicto.autoridad_id == autoridad.id)
+
+        # Terminar la consulta con el orden, offset y limit
+        edictos = edictos.order_by(Edicto.id.desc()).offset(offset).limit(limit)
 
         # Preparar la tabla
         tabla = Table(title=f"Edictos {offset + 1} al {offset + limit} de la autoridad {autoridad_clave} con {total}")
-        tabla.add_column("ID", header_style="green", no_wrap=True)
-        tabla.add_column("Autoridad", header_style="green")
-        tabla.add_column("Expediente", header_style="green")
-        tabla.add_column("URL", header_style="green")
-        tabla.add_column("Estatus", header_style="green")
+        tabla.add_column("ID", header_style="white", no_wrap=True)
+        tabla.add_column("Autoridad", header_style="white")
+        tabla.add_column("Expediente", header_style="white")
+        tabla.add_column("URL", header_style="white")
+        tabla.add_column("Estatus", header_style="white")
         tabla.add_column("Válido", header_style="white")
 
         # Bucle con la barra de progreso
         with Progress() as progress:
             muestra = min(limit, total - offset)
-            task = progress.add_task(f"Validando {limit} edictos de la autoridad {autoridad_clave}", total=muestra)
-            for item in db.execute(stmt):
+            task = progress.add_task(f"Validando {muestra} edictos de la autoridad {autoridad_clave}", total=muestra)
+            for edicto in edictos:
                 # Validar que el url apunte a un recurso que exista en el depósito de edictos
                 valido = False
                 try:
                     valido = check_file_exists_from_gcs(
                         bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                        blob_name=get_blob_name_from_url(item.url),
+                        blob_name=get_blob_name_from_url(edicto.url),
                     )
                 except Exception as error:
-                    console.print(f"[red]Error al validar el edicto {item.id}: {error}[/red]")
+                    console.print(f"[red]Error al validar el edicto {edicto.id}: {error}[/red]")
                     continue
                 # Agregar renglon a la tabla
                 if valido:
-                    tabla.add_row(str(item.id), item.clave, item.expediente, item.url, item.estatus, "[green]Sí[/green]")
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.expediente, edicto.url, edicto.estatus, "[green]Sí[/green]")
                     total_validos += 1
                 else:
-                    tabla.add_row(str(item.id), item.clave, item.expediente, item.url, item.estatus, "[red]No[/red]")
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.expediente, edicto.url, edicto.estatus, "[red]No[/red]")
                     total_invalidos += 1
                 # Actualizar la barra de progreso
                 progress.update(task, advance=1)
