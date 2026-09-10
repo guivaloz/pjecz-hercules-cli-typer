@@ -2,7 +2,6 @@
 Edictos command
 """
 
-from functools import total_ordering
 from typing import Annotated
 
 from hashids import Hashids
