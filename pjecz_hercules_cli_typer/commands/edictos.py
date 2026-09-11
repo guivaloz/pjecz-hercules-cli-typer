@@ -138,9 +138,17 @@ def validar(autoridad_clave: str = "", offset: int = 0, limit: int = 40, loop: b
 
     # Consultar la cantidad total de edictos
     if autoridad_clave != "":
-        total = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).count()
+        total = db.query(Edicto).join(Autoridad).filter(Autoridad.clave == autoridad_clave).filter(Edicto.estatus == "A").count()
     else:
         total = db.query(Edicto).count()
+
+    # Si el total es cero, mostrar mensaje y salir
+    if autoridad_clave != "" and total == 0:
+        console.print(f"[yellow]No se encontraron edictos para la autoridad {autoridad_clave}[/yellow]")
+        raise Exit(code=1)
+    if total == 0:
+        console.print("[yellow]No se encontraron edictos[/yellow]")
+        raise Exit(code=1)
 
     # Comenzar un bucle infinito donde se va incrementando el offset hasta que no haya más edictos, si loop es True
     while True:
@@ -150,8 +158,8 @@ def validar(autoridad_clave: str = "", offset: int = 0, limit: int = 40, loop: b
         if autoridad is not None:
             edictos = edictos.filter(Edicto.autoridad_id == autoridad.id)
 
-        # Terminar la consulta con el orden, offset y limit
-        edictos = edictos.order_by(Edicto.id.desc()).offset(offset).limit(limit)
+        # Terminar la consulta con estatus A, orden, offset y limit
+        edictos = edictos.filter(Edicto.estatus == "A").order_by(Edicto.id.desc()).offset(offset).limit(limit)
 
         # Preparar la tabla
         tabla = Table(title=f"Edictos {offset + 1} al {offset + limit} de la autoridad {autoridad_clave} con {total}")
