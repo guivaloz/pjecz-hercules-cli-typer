@@ -2,14 +2,12 @@
 Edictos command
 """
 
-from typing import Annotated
-
 from hashids import Hashids
 from rich.console import Console
 from rich.progress import Progress
 from rich.table import Table
 from sqlalchemy import select
-from typer import Exit, Option, Typer
+from typer import Exit, Typer
 
 from pjecz_hercules_cli_typer.config.settings import get_settings
 from pjecz_hercules_cli_typer.models.autoridades import Autoridad
@@ -198,11 +196,11 @@ def validar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, ciclar:
                     continue
                 # Agregar renglon a la tabla
                 if valido:
-                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, "[green]Sí[/green]")
                     total_validos += 1
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, "[green]Sí[/green]")
                 else:
-                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, "[yellow]No[/yellow]")
                     total_invalidos += 1
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, "No", style="yellow")
                 # Actualizar la barra de progreso
                 progress.update(task, advance=1)
 
@@ -312,7 +310,7 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
         # Bucle con la barra de progreso
         with Progress() as progress:
             muestra = min(limit, total - offset)
-            task = progress.add_task(f"Validando {muestra} edictos de la autoridad {autoridad_clave}", total=muestra)
+            task = progress.add_task(f"Actualizando {muestra} edictos de la autoridad {autoridad_clave}", total=muestra)
             for edicto in edictos:
                 # Validar que el url apunte a un recurso que exista en el depósito de edictos
                 valido = False
@@ -329,7 +327,7 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
                 # Si NO es válido, agregar renglon a la tabla y continuar con el siguiente edicto
                 if not valido:
                     total_invalidos += 1
-                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, "[red]No[/red]", "", style="red")
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, "No", "", style="yellow")
                     continue
                 valido_str = "[green]Sí[/green]"
 
@@ -357,6 +355,8 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
 
                 # Si hay cambios
                 if url_anterior != url_correcta or archivo_anterior != archivo_correcto:
+                    update_str = "Pendiente"
+                    row_style = "cyan"
                     edicto.archivo = archivo_correcto
                     edicto.url = url_correcta
                     # Si guardar es True
@@ -371,18 +371,17 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
                             db.add(edicto)
                             db.commit()
                             total_actualizados += 1
-                            update_str = "[green]Actualizado[/green]"
+                            update_str = "Actualizado"
+                            row_style = "green"
                         except Exception as error:
                             total_fallidos += 1
                             console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {error}[/red]")
                             continue
-                    else:
-                        update_str = "[cyan]Pendiente[/cyan]"
                     total_actualizados += 1
-                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, valido_str, update_str, style="white")
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, valido_str, update_str, style=row_style)
                 else:
                     total_sin_cambios += 1
-                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, valido_str, "[blue]No[/blue]", style="blue")
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, valido_str, "No", style="blue")
 
                 # Actualizar la barra de progreso
                 progress.update(task, advance=1)
