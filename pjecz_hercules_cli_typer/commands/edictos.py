@@ -282,6 +282,10 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
     total_invalidos = 0
     total_sin_cambios = 0
 
+    # Recordar el previo_url_anterior porque en el Portal se pueden cargan varios registros con el mismo url
+    previo_url_anterior = ""
+    previo_url_nuevo = ""
+
     # Comenzar un bucle donde se va incrementando el offset hasta que no haya más edictos, si ciclar es True
     while True:
         edictos = db.query(Edicto)
@@ -335,44 +339,54 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
                 archivo_anterior = edicto.archivo
                 url_anterior = edicto.url
 
-                # Definir el URL correcto del archivo
-                fecha = edicto.creado.date()
-                descripcion = safe_string(edicto.descripcion, max_len=64, separator="-")
-                hashed_id = str(hashids.encode(edicto.id))
-                url_correcta = public_blob_name(
-                    bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                    base="",
-                    distrito_clave=edicto.autoridad.distrito.clave,
-                    autoridad_clave=edicto.autoridad.clave,
-                    fecha=fecha,
-                    descripcion=descripcion,
-                    hashed_id=hashed_id,
-                    extension="pdf",
-                )
+                # Si url_anterior es igual que previo_url_anterior entonces se actualiza con previo_url_nuevo
+                es_duplicado = False
+                if previo_url_anterior != "" and url_anterior == previo_url_anterior:
+                    url_correcta = previo_url_nuevo
+                    es_duplicado = True
+                else:
+                    # Definir el URL correcto del archivo
+                    fecha = edicto.creado.date()
+                    descripcion = safe_string(edicto.descripcion, max_len=64, separator="-")
+                    hashed_id = str(hashids.encode(edicto.id))
+                    url_correcta = public_blob_name(
+                        bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                        base="",
+                        distrito_clave=edicto.autoridad.distrito.clave,
+                        autoridad_clave=edicto.autoridad.clave,
+                        fecha=fecha,
+                        descripcion=descripcion,
+                        hashed_id=hashed_id,
+                        extension="pdf",
+                    )
 
                 # Obtener el nombre del archivo correcto a partir del URL correcto
                 archivo_correcto = url_correcta.split("/")[-1]
 
                 # Si hay cambios
                 if url_anterior != url_correcta or archivo_anterior != archivo_correcto:
-                    update_str = "Pendiente"
-                    row_style = "cyan"
+                    update_str = "Pendiente" if es_duplicado is False else "Duplicado"
+                    row_style = "green" if es_duplicado is False else "white"
                     edicto.archivo = archivo_correcto
                     edicto.url = url_correcta
                     # Si guardar es True
                     if guardar:
                         # Mover el blob en Google Cloud Storage y actualizar la base de datos
                         try:
-                            update_blob_name_in_gcs(
-                                bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
-                                old_blob_name=get_blob_name_from_url(url_anterior),
-                                new_blob_name=get_blob_name_from_url(url_correcta),
-                            )
+                            if es_duplicado is False:
+                                update_blob_name_in_gcs(
+                                    bucket_name=settings.CLOUD_STORAGE_DEPOSITO_EDICTOS,
+                                    old_blob_name=get_blob_name_from_url(url_anterior),
+                                    new_blob_name=get_blob_name_from_url(url_correcta),
+                                )
+                                update_str = "Actualizado"
+                                row_style = "green"
+                            else:
+                                update_str = "Duplicado"
+                                row_style = "white"
                             db.add(edicto)
                             db.commit()
                             total_actualizados += 1
-                            update_str = "Actualizado"
-                            row_style = "green"
                         except Exception as error:
                             total_fallidos += 1
                             console.print(f"[red]Error al actualizar el blob en Google Cloud Storage: {error}[/red]")
@@ -381,10 +395,14 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
                     tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, valido_str, update_str, style=row_style)
                 else:
                     total_sin_cambios += 1
-                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, valido_str, "No", style="blue")
+                    tabla.add_row(str(edicto.id), edicto.autoridad.clave, edicto.url, valido_str, "Sin cambios", style="cyan")
 
                 # Actualizar la barra de progreso
                 progress.update(task, advance=1)
+
+                # Actualizar el previo_url_anterior y previo_url_nuevo
+                previo_url_anterior = url_anterior
+                previo_url_nuevo = url_correcta
 
         # Mostrar la tabla
         console.print(tabla)
@@ -406,10 +424,10 @@ def actualizar(autoridad_clave: str = "", offset: int = 0, limit: int = 10, cicl
             console.print(f"Total de edictos actualizados: [green]{total_actualizados}[/green]")
     else:
         if total_actualizados > 0:
-            console.print(f"Total de edictos que se podrían actualizar: [green]{total_actualizados}[/green]")
+            console.print(f"Total de edictos que se podrían actualizar (incluye duplicados): [green]{total_actualizados}[/green]")
     if total_invalidos > 0:
         console.print(f"Total de edictos inválidos: [yellow]{total_invalidos}[/yellow]")
     if total_fallidos > 0:
         console.print(f"Total de edictos fallidos: [red]{total_fallidos}[/red]")
     if total_sin_cambios > 0:
-        console.print(f"Total de edictos sin cambios: [red]{total_sin_cambios}[/red]")
+        console.print(f"Total de edictos sin cambios: [cyan]{total_sin_cambios}[/cyan]")
