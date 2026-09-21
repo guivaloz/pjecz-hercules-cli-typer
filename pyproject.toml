@@ -3,6 +3,9 @@ name = "pjecz-hercules-cli-typer"
 version = "0.1.0"
 description = "Command Line Interface made with Typer and Python for Plataforma Web."
 readme = "README.md"
+authors = [
+    { name = "Guillermo Valdes", email = "guillermo.valdes@pjecz.gob.mx" }
+]
 requires-python = ">=3.14"
 dependencies = [
     "google-auth>=2.49.2",

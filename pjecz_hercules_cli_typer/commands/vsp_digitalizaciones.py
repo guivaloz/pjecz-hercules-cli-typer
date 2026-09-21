@@ -2,10 +2,12 @@
 VASPEC Digitalizaciones command
 """
 
+import csv
 import json
 import logging
 import re
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -602,7 +604,104 @@ def consultar(autoridad_clave: str = "", descripcion: str = "", offset: int = 0,
 
 
 @app.command()
-def exportar(autoridad_clave: str = ""):
+def exportar_csv(autoridad_clave: str = ""):
+    """Exportar la tabla vsp_digitalizaciones a un archivo CSV"""
+    console = Console()
+    msg = "Exportando la tabla vsp_digitalizaciones a un archivo CSV"
+    bitacora.info(msg)
+    console.print(f"{msg}...")
+
+    # Obtener configuración
+    config = get_settings()
+    timezone = pytz.timezone(config.TZ)
+
+    # Inicializar la base de datos
+    db = get_database()
+
+    # Iniciar la consulta
+    stmt = select(
+        VspDigitalizacion.archivo_uuid,
+        Autoridad.clave,
+        VspDigitalizacion.expediente,
+        VspDigitalizacion.expediente_anio,
+        VspDigitalizacion.expediente_num,
+        VspDigitalizacion.descripcion,
+        VspDigitalizacion.url,
+    ).join(
+        Autoridad,
+    )
+
+    # Si viene la autoridad_clave, filtrar por la autoridad
+    if autoridad_clave != "":
+        autoridad_clave = safe_clave(autoridad_clave)
+        if autoridad_clave == "":
+            msg = "Clave de autoridad inválida"
+            bitacora.error(msg)
+            console.print(f"[red]{msg}[/red]")
+            raise Exit(code=1)
+        stmt = stmt.filter(Autoridad.clave.contains(autoridad_clave))
+
+    # Filtrar solo los que tengan estatus A
+    stmt = stmt.filter(VspDigitalizacion.estatus == "A")
+
+    # Ordenar por clave de autoridad, año de expediente, número de expediente y descripción
+    stmt = stmt.order_by(
+        Autoridad.clave,
+        VspDigitalizacion.expediente_anio,
+        VspDigitalizacion.expediente_num,
+        VspDigitalizacion.descripcion,
+    )
+
+    # Definir el nombre del archivo CSV con la fecha y hora actual
+    ahora_str = datetime.now(tz=timezone).strftime("%Y-%m-%d-%H%M%S")
+    ruta = Path("exports", f"vsp_digitalizaciones_{ahora_str}.csv")
+    if ruta.exists():
+        console.print(f"[red]ERROR: {ruta} ya existe, no voy a sobreescribirlo.")
+        sys.exit(1)
+
+    # Abrir el archivo CSV
+    with open(ruta, "w", encoding="utf8") as puntero:
+        respaldo = csv.writer(puntero)
+        respaldo.writerow(
+            [
+                "UUID",
+                "AUTORIDAD_CLAVE",
+                "EXPEDIENTE",
+                "EXPEDIENTE_ANIO",
+                "EXPEDIENTE_NUM",
+                "DESCRIPCION",
+                "URL",
+            ]
+        )
+        # Agregar las filas al archivo CSV
+        contador = 0
+        for item in db.execute(stmt):
+            respaldo.writerow(
+                [
+                    item.archivo_uuid,
+                    item.clave,
+                    item.expediente,
+                    item.expediente_anio,
+                    item.expediente_num,
+                    item.descripcion,
+                    item.url,
+                ]
+            )
+            contador += 1
+
+    # Mensaje de éxito
+    if contador:
+        msg = f"Se exportaron {contador} filas al archivo {ruta.name}"
+        bitacora.info(msg)
+        console.print(f"[bold green]{msg}[/bold green]")
+    else:
+        msg = "No se encontraron digitalizaciones para exportar. El archivo CSV está vacío."
+        bitacora.warning(msg)
+        console.print(f"[yellow]{msg}[/yellow]")
+
+
+@app.command()
+def exportar_xlsx(autoridad_clave: str = ""):
     """Exportar la tabla vsp_digitalizaciones a un archivo XLSX"""
     console = Console()
     msg = "Exportando la tabla vsp_digitalizaciones a un archivo XLSX"

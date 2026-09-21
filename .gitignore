@@ -224,5 +224,7 @@ __marimo__/
 # Bash scripts
 .bashrc
 
-# Excel exported files
+# Exported files
 *.xlsx
+*.csv
+
