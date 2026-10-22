@@ -37,10 +37,12 @@ class Usuario(Base):
     titulo: Mapped[Optional[str]] = mapped_column(String(32))
     api_key: Mapped[Optional[str]] = mapped_column(String(128))
     api_key_expiracion: Mapped[Optional[datetime]]
+    api_key_cuota_diaria: Mapped[Optional[int]]
     contrasena: Mapped[Optional[str]] = mapped_column(String(256))
 
     # Hijos
     arc_remesas: Mapped[list["ArcRemesa"]] = relationship(back_populates="usuario_asignado")
+    bitacoras_apis: Mapped[list["BitacoraAPI"]] = relationship(back_populates="usuario")
     ofi_documentos: Mapped[list["OfiDocumento"]] = relationship(back_populates="usuario")
     ofi_documentos_destinatarios: Mapped[list["OfiDocumentoDestinatario"]] = relationship(back_populates="usuario")
     soportes_tickets: Mapped[list["SoporteTicket"]] = relationship(back_populates="usuario")

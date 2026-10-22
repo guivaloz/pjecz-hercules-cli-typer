@@ -10,6 +10,7 @@ from pjecz_hercules_cli_typer.models.arc_juzgados_extintos import ArcJuzgadoExti
 from pjecz_hercules_cli_typer.models.arc_remesas import ArcRemesa
 from pjecz_hercules_cli_typer.models.arc_remesas_documentos import ArcRemesaDocumento
 from pjecz_hercules_cli_typer.models.autoridades import Autoridad
+from pjecz_hercules_cli_typer.models.bitacoras_apis import BitacoraAPI
 from pjecz_hercules_cli_typer.models.dgt_depositos import DgtDepositos
 from pjecz_hercules_cli_typer.models.dgt_digitalizaciones import DgtDigitalizacion
 from pjecz_hercules_cli_typer.models.dgt_entregas import DgtEntrega
@@ -56,6 +57,7 @@ __all__ = [
     "ArcRemesa",
     "ArcRemesaDocumento",
     "Autoridad",
+    "BitacoraAPI",
     "DgtDepositos",
     "DgtDigitalizacion",
     "DgtEntrega",
