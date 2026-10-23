@@ -54,8 +54,13 @@ else
 fi
 echo
 
-# Google Application Credentials
-export GOOGLE_APPLICATION_CREDENTIALS=
+export GOOGLE_APPLICATION_CREDENTIALS=$HOME/.google-application-credentials/service-account.json
+if [ -f $GOOGLE_APPLICATION_CREDENTIALS ]
+then
+    echo "-- Google Application Credentials"
+    echo "   ${GOOGLE_APPLICATION_CREDENTIALS}"
+    echo
+fi
 
 if [ -f .env ]
 then
